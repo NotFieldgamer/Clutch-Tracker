@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { authEnabled, getUserId, taskScope } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -19,8 +20,17 @@ const SAMPLE = [
 ];
 
 export async function POST() {
+  const userId = await getUserId();
+  if (authEnabled() && !userId) {
+    return NextResponse.json({ error: "Sign in to load a sample week." }, { status: 401 });
+  }
+
   try {
-    const existing = await prisma.task.findMany({ select: { title: true } });
+    // Idempotency + count are scoped to this user (or global in the no-auth path).
+    const existing = await prisma.task.findMany({
+      where: taskScope(userId),
+      select: { title: true },
+    });
     const have = new Set(existing.map((t) => t.title));
 
     const now = new Date();
@@ -34,6 +44,7 @@ export async function POST() {
         importance: s.importance,
         percentDone: s.percentDone,
         type: s.type,
+        userId, // null in the no-auth path
       };
     });
 
@@ -41,7 +52,7 @@ export async function POST() {
       await prisma.task.createMany({ data: toCreate });
     }
 
-    const total = await prisma.task.count();
+    const total = await prisma.task.count({ where: taskScope(userId) });
     return NextResponse.json({ added: toCreate.length, total });
   } catch (err) {
     console.error("[seed] error:", err);

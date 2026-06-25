@@ -15,6 +15,8 @@ datasource db {
 /// Core unit of work the agent rescues.
 model Task {
   id          String   @id @default(cuid())
+  /// Clerk user id when auth is enabled; null in the no-auth local-dev path.
+  userId      String?
   title       String
   deadline    DateTime
   importance  Int      @default(3) // 1–5
@@ -27,6 +29,8 @@ model Task {
   blocks     Block[]
   artifacts  Artifact[]
   actionLogs ActionLog[]
+
+  @@index([userId])
 }
 
 /// A decomposed step of a Task (from the agent's `decompose_task`).
@@ -35,6 +39,7 @@ model SubStep {
   taskId    String
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   title     String
+  effortMin Int      @default(30) // the agent's minute estimate (drives "minutes reclaimed")
   done      Boolean  @default(false)
   order     Int      @default(0)
   createdAt DateTime @default(now())

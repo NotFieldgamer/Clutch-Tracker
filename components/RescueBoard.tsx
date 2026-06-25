@@ -10,6 +10,7 @@ import AddTaskBar from "@/components/AddTaskBar";
 import TaskList, { type ScoredCard } from "@/components/TaskList";
 import AgentActivityRail from "@/components/AgentActivityRail";
 import CalendarConnect, { type CalStatus } from "@/components/CalendarConnect";
+import AuthControls from "@/components/AuthControls";
 import ProactiveScanBanner from "@/components/ProactiveScanBanner";
 import { getCalendarToken } from "@/lib/google/auth";
 import { useReduced } from "@/lib/motion";
@@ -212,7 +213,10 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
           />
           Clutch
         </span>
-        <CalendarConnect status={calStatus} onConnect={connectCalendar} />
+        <div className="flex items-center gap-3">
+          <CalendarConnect status={calStatus} onConnect={connectCalendar} />
+          <AuthControls />
+        </div>
       </motion.header>
 
       <AnimatePresence>

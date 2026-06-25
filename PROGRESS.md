@@ -170,16 +170,43 @@ signed-in Google account in a real browser — can't be automated headlessly. Te
 - Verified in-browser at 1536px and 360px: clean reveal (nothing stuck hidden), zero console
   errors/warnings, `tsc --noEmit` clean.
 
-**Next (Step 5 — persistence + auth)**
-- Persist sub-steps / blocks / artifacts / action-logs via Prisma so rescue outputs survive refresh;
-  optional Clerk auth behind a flag (CLAUDE.md §2), tasks scoped per user.
+---
+
+## Step 5 — persistence + optional auth ✅
+
+**Done**
+- **Schema migration `persist_and_auth`:** added `SubStep.effortMin` (the minute estimate the UI +
+  "minutes reclaimed" rely on, previously dropped) and `Task.userId` (+ index) for Clerk scoping.
+- **Rescue persistence (`lib/persist.ts`):** after a rescue, `/api/agent` persists each rescued task's
+  sub-steps / blocks / artifacts (replace-in-place) and appends the action-log via Prisma — on the
+  success path (`result.actionLog`) **and** the partial path (mirrored `collected` log), so an
+  interrupted rescue still saves what got done. Writes are scoped to the user's task ids
+  (defense-in-depth) and each task persists in its own transaction.
+- **Today view loads from the DB (`app/page.tsx`):** tasks now `include` their sub-steps (by order),
+  blocks (by start), and artifacts — so rescue outputs survive a refresh and re-render with their
+  de-escalated risk. Verified with a write→read round-trip (effortMin, block times, calendarEventId,
+  email artifact, and the action-log row all survive).
+- **Optional Clerk auth, behind a flag (`lib/auth.ts`):** `authEnabled()` is true only when **both**
+  Clerk keys are set; otherwise the app runs the no-auth path (tasks global, `userId` null, no Clerk
+  UI). `getUserId()` lazy-imports Clerk's server runtime; `taskScope()` scopes Task queries.
+  - `middleware.ts`: `clerkMiddleware()` when on, a passthrough when off.
+  - `app/layout.tsx`: wraps the tree in a DESIGN-themed `<ClerkProvider>` only when on.
+  - `app/sign-in/[[...sign-in]]/page.tsx`: themed sign-in (the Clutch thesis + Clerk's `<SignIn/>`);
+    `/` redirects signed-out users here. `components/AuthControls.tsx` adds the `<UserButton/>` to the
+    header when configured.
+  - `/api/parse`, `/api/seed`, `/api/agent` set/scope `userId` and 401 when signed out.
+- **Verified both paths in-browser:** auth ON (keys present) → `/` 307 → themed `/sign-in` renders, zero
+  errors (only Clerk's benign dev-keys notice); auth OFF (keys blank) → `/` 200, app serves with no
+  Clerk. `tsc --noEmit` clean.
 
 **Known issues**
 - Gemini flash models are intermittently 503 (high demand); the agent retries + fails over and delivers
   partial results with an honest summary if a rescue is interrupted mid-loop.
 - `findFreeSlots` working-hours window uses server local time (verbatim) — fine on local dev (IST), but
-  on Vercel (UTC) blocks may land outside the user's 9–21 window. Revisit with persistence/tz work.
-- Rescue outputs (steps/blocks/artifacts, approvals) live in client state, not yet persisted (reset on
-  refresh). The de-escalation animation only plays on a live rescue (a real hot→calm state change).
-- No delete/clear UI yet — the dev DB holds the sample week plus a few parse-test tasks.
-- `.env.local` must be filled before any Gemini/Calendar/DB feature works.
+  on Vercel (UTC) blocks may land outside the user's 9–21 window. Revisit with tz work.
+- Re-running a rescue **replaces** sub-steps but **accumulates** blocks/artifacts (the verbatim tools
+  `push`), so repeated rescues can stack drafts on a task. Fine for the demo; dedupe later if needed.
+- Artifact approvals (the UI accept/undo) still live in client state — not yet persisted.
+- Tasks created before this migration have `userId = null`, so they're invisible once auth is on
+  (expected). Load a sample week while signed in to populate a user's view.
+- No delete/clear UI yet. `.env.local` must be filled before any Gemini/Calendar/DB/Auth feature works.

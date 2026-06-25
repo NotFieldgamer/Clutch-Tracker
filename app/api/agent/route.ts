@@ -1,5 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { runRescue } from "@/agent/agentLoop";
+import { prisma } from "@/lib/db";
+import { persistRescue } from "@/lib/persist";
+import { authEnabled, getUserId } from "@/lib/auth";
 import type { Task, ActionLogEntry } from "@/lib/types";
 
 // The agent loop + Prisma need Node.js; a rescue chains several model calls.
@@ -104,11 +107,25 @@ export async function POST(req: Request) {
   const goal = body.goal?.trim() || DEFAULT_GOAL;
   const calendarToken = body.calendarToken ?? null; // calendar arrives in Step 4
 
+  // Scope persistence to the signed-in user (no-auth path → write everything).
+  const userId = await getUserId();
+  if (authEnabled() && !userId) {
+    return Response.json({ error: "Sign in to rescue your week." }, { status: 401 });
+  }
+  const ownedIds = authEnabled()
+    ? new Set(
+        (await prisma.task.findMany({ where: { userId }, select: { id: true } })).map((r) => r.id),
+      )
+    : null;
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+
+      // Mirror the streamed log so the partial path can still persist it.
+      const collected: ActionLogEntry[] = [];
 
       try {
         const ai = makeResilientAI(process.env.GEMINI_API_KEY!);
@@ -118,13 +135,21 @@ export async function POST(req: Request) {
           goal,
           model: AGENT_MODEL,
           getAccessToken: () => calendarToken,
-          onLog: (entry: ActionLogEntry) => send({ type: "log", entry }),
+          onLog: (entry: ActionLogEntry) => {
+            collected.push(entry);
+            send({ type: "log", entry });
+          },
         });
+        // Persist before signalling done so an immediate refresh shows the work.
+        await persistRescue(result.tasks, result.actionLog ?? collected, ownedIds);
         send({ type: "done", tasks: result.tasks, finalText: result.finalText });
       } catch (err) {
         console.error("[agent] rescue interrupted:", err);
         // runRescue mutates `tasks` in place, so partial work (sub-steps,
-        // drafts) survives a mid-loop failure — deliver it rather than drop it.
+        // drafts) survives a mid-loop failure — persist and deliver it.
+        await persistRescue(tasks, collected, ownedIds).catch((e) =>
+          console.error("[agent] partial persist failed:", e),
+        );
         send({
           type: "done",
           tasks,

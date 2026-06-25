@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Type } from "@google/genai";
 import { prisma } from "@/lib/db";
+import { authEnabled, getUserId } from "@/lib/auth";
 
 // Prisma + @google/genai need the Node.js runtime (not edge).
 export const runtime = "nodejs";
@@ -119,6 +120,11 @@ export async function POST(req: Request) {
     );
   }
 
+  const userId = await getUserId();
+  if (authEnabled() && !userId) {
+    return NextResponse.json({ error: "Sign in to add your week." }, { status: 401 });
+  }
+
   if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json(
       {
@@ -205,6 +211,7 @@ export async function POST(req: Request) {
         importance: clampInt(p.importance, 1, 5, 3),
         percentDone: clampInt(p.percentDone, 0, 100, 0),
         type: normalizeType(p.type),
+        userId, // null in the no-auth path
       };
     })
     .filter((d) => d.title.length > 0);
