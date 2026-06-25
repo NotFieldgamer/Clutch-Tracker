@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Design tokens — DESIGN.md §2 (verbatim)
+   "Calm under pressure": deep indigo operations deck at dusk,
+   a warm→cool heat scale, and a violet agent signal.
+   ============================================================ */
+:root {
+  /* base — deep indigo ink, never pure black */
+  --ink:        #0B0E16;   /* page background */
+  --ink-2:      #10141F;   /* raised background */
+  --surface:    #141A28;   /* card base (used with transparency for glass) */
+  --border:     rgba(255,255,255,0.08);
+  --border-str: rgba(255,255,255,0.14);
+
+  /* text */
+  --text:       #E9EDF7;   /* primary */
+  --muted:      #8B94AC;   /* secondary */
+  --faint:      #5C657C;   /* tertiary / captions */
+
+  /* the agent's own signal — used only for agent actions & the rail */
+  --agent:      #8B5CF6;   /* violet */
+  --agent-2:    #A78BFA;
+  --agent-glow: rgba(139,92,246,0.35);
+
+  /* heat scale — encodes deadline risk (meaning, not decoration) */
+  --calm:       #34D399;   /* on track / rescued */
+  --warm:       #FBBF24;   /* due within ~3 days */
+  --hot:        #FB7185;   /* due within ~1 day */
+  --critical:   #F43F5E;   /* overdue / now */
+
+  /* utility */
+  --ring:       rgba(167,139,250,0.6); /* focus ring */
+  --radius:     16px;
+  --radius-sm:  10px;
+
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background: var(--ink);
+    color: var(--text);
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    min-height: 100dvh;
+  }
+
+  /* Visible keyboard focus everywhere (DESIGN.md §8 quality floor). */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--agent-glow);
+    color: var(--text);
+  }
+}
+
+/* Honor prefers-reduced-motion globally — big motion is swapped for fades
+   per component; this is the safety net (DESIGN.md §4). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,18 +1,45 @@
+# dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
 dist/
-build/
 coverage/
-docs/
-CLAUDE.MD
+
+# env files — keep .env.example tracked, ignore everything with secrets
 .env
-.env.\*
-!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-_.log
-_.tsbuildinfo
+# typescript / build artifacts
+*.tsbuildinfo
+next-env.d.ts
 
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# editors / os
 .vscode/
 .idea/
-
 .DS_Store
 Thumbs.db
+
+# vercel
+.vercel
+
+# planning docs (kept local, not in the repo)
+docs/
+CLAUDE.md
+DESIGN.md
+LOGIC_SNIPPETS.md

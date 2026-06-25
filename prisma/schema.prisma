@@ -1,0 +1,27 @@
+// Clutch — Prisma schema
+// DB: PostgreSQL (Supabase). The pooled URL is used at runtime; the direct URL
+// is used for migrations (Supabase transaction pooler can't run migrations).
+// This is a minimal starting stub — sub-steps / blocks / artifacts / action-logs
+// are added in the data-model build step. See CLAUDE.md §7.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// Core unit of work the agent rescues. Expanded in the data-model step.
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  deadline    DateTime
+  importance  Int      @default(3) // 1–5
+  percentDone Int      @default(0) // 0–100
+  type        String   @default("generic")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
