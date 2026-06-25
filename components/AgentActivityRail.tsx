@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import GlassPanel from "@/components/ui/GlassPanel";
+import Skeleton from "@/components/ui/Skeleton";
 import type { ActionLogEntry } from "@/lib/types";
 
 /**
@@ -49,8 +50,23 @@ export default function AgentActivityRail({
         ) : null}
       </div>
 
-      <div ref={scrollRef} className="max-h-[58vh] flex-1 overflow-y-auto pr-1">
-        {feed.length === 0 && !running ? (
+      <div
+        ref={scrollRef}
+        className="max-h-[58vh] flex-1 overflow-y-auto pr-1"
+        role="log"
+        aria-live="polite"
+        aria-label="Agent action log"
+      >
+        {feed.length === 0 && running ? (
+          // Loading: say what's happening + skeleton lines until the first
+          // action streams in (DESIGN.md §7).
+          <div className="space-y-2.5">
+            <p className="t-body text-muted">Reading your week&hellip;</p>
+            <Skeleton className="h-3 w-3/4" />
+            <Skeleton className="h-3 w-2/3" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        ) : feed.length === 0 ? (
           <p className="t-body text-faint">
             The agent&rsquo;s log appears here. Hit{" "}
             <span className="text-muted">Rescue my week</span> to watch it work.
@@ -65,7 +81,6 @@ export default function AgentActivityRail({
                 return (
                   <motion.li
                     key={entry.id}
-                    layout={!reduce}
                     initial={{ opacity: 0, x: reduce ? 0 : -8 }}
                     animate={{
                       opacity: 1,

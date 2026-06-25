@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { rescueEase } from "@/lib/motion";
 
 interface RiskMeterProps {
@@ -30,6 +30,7 @@ export default function RiskMeter({
 }: RiskMeterProps) {
   const v = Math.max(0, Math.min(1, value));
   const color = heatFor(v);
+  const reduce = useReducedMotion();
 
   return (
     <div
@@ -44,7 +45,9 @@ export default function RiskMeter({
         className="h-full rounded-full"
         initial={false}
         animate={{ width: `${v * 100}%`, backgroundColor: color }}
-        transition={rescueEase}
+        // The de-escalation ease is the payoff; under reduced motion the meter
+        // still changes (color + width) but snaps rather than glides.
+        transition={reduce ? { duration: 0 } : rescueEase}
         style={{ backgroundColor: color }}
       />
     </div>

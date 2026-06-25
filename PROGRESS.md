@@ -140,6 +140,36 @@ signed-in Google account in a real browser — can't be automated headlessly. Te
   ArtifactView shows Subject/Body with Copy and a working Approve↔Undo toggle. `tsc --noEmit` clean,
   zero console errors.
 
+---
+
+## Polish — portfolio pass ✅
+
+**Done**
+- **Page-load orchestration (§4.1):** `RescueBoard` is now a single `motion.main` stagger container;
+  the banner → body grid → (main column, rail) reveal in sequence (header → list → rail) via nested
+  `staggerContainer`/`fadeUp` variants. Containers never fade (no stuck-hidden), only leaves do.
+- **Micro-interactions (§4.5):** `TaskCard` gets a small `whileHover {y:-2}` (its own snappy spring so
+  it doesn't inherit the 700ms de-escalation ease); `Button` keeps its lift/tap. Both dropped under
+  reduced motion. Added a shared `lift` helper to `lib/motion.ts`.
+- **"Minutes reclaimed" stat (§4.6):** after a rescue settles, a `CountUp` shows the work the agent
+  broke down + scheduled (real block minutes where present, else planned sub-step effort).
+- **Reduced motion everywhere (§4):** gated the remaining JS animations — `Button`, `RiskMeter` (snaps
+  instead of gliding), `TaskCard` hover + expand, `ProactiveScanBanner`, and `RescueBoard`'s alerts —
+  on `useReducedMotion`. Ambient drift / CountUp / rail already paused. CSS media-query safety net kept.
+- **Loading skeletons (§7):** the rail now shows "Reading your week…" + pulsing `Skeleton` lines while
+  a rescue is running but no action has streamed yet (new `components/ui/Skeleton.tsx`). The streamed
+  log is an `aria-live="polite"` `role="log"` region.
+- **Audit (§8):** no horizontal overflow at 360px (verified); calendar control uses a shorter label
+  `< sm`; primary buttons are ≥44px tall; semantic landmarks (`header` banner, `main`, labelled
+  `section`s, `aside`); visible `--ring` focus (global). **AA contrast:** bumped `--faint`
+  `#5C657C → #767F96` (~3.3:1 → ~4.8:1 on `--ink`) so small caption text clears AA — DESIGN §8's AA
+  floor takes precedence over the literal token value.
+- **Removed one animation that wasn't earning its place (§4 restraint):** dropped the per-line `layout`
+  spring on each Activity-rail entry — it competed with the `AnimatePresence` x-stream and could jitter
+  the whole log on each insert. Lines now stream in cleanly; the success/fail color flash stays.
+- Verified in-browser at 1536px and 360px: clean reveal (nothing stuck hidden), zero console
+  errors/warnings, `tsc --noEmit` clean.
+
 **Next (Step 5 — persistence + auth)**
 - Persist sub-steps / blocks / artifacts / action-logs via Prisma so rescue outputs survive refresh;
   optional Clerk auth behind a flag (CLAUDE.md §2), tasks scoped per user.

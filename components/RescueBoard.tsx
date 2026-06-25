@@ -12,6 +12,7 @@ import AgentActivityRail from "@/components/AgentActivityRail";
 import CalendarConnect, { type CalStatus } from "@/components/CalendarConnect";
 import ProactiveScanBanner from "@/components/ProactiveScanBanner";
 import { getCalendarToken } from "@/lib/google/auth";
+import { useReduced } from "@/lib/motion";
 import { riskScore } from "@/lib/riskScore";
 import type { Task, ActionLogEntry } from "@/lib/types";
 
@@ -22,6 +23,23 @@ const AT_RISK_THRESHOLD = 0.5;
 const RESCUED_RISK = 0.1;
 const isRescued = (t: Task) =>
   t.subSteps.length > 0 || t.blocks.length > 0 || t.artifacts.length > 0;
+
+/**
+ * Minutes the agent put back on the user's plan: real scheduled-block time where
+ * blocks exist, otherwise the planned sub-step effort it broke the task into.
+ */
+function reclaimedMinutes(tasks: Task[]): number {
+  return Math.round(
+    tasks.reduce((sum, t) => {
+      const blockMin = t.blocks.reduce((s, b) => {
+        const ms = new Date(b.endISO).getTime() - new Date(b.startISO).getTime();
+        return s + (ms > 0 ? ms / 60_000 : 0);
+      }, 0);
+      const stepMin = t.subSteps.reduce((s, x) => s + (x.effortMin || 0), 0);
+      return sum + (blockMin > 0 ? blockMin : stepMin);
+    }, 0),
+  );
+}
 const RESCUE_GOAL =
   "Rescue my week. For each task at risk of slipping: prioritize, decompose it into concrete sub-steps, and generate a real first-draft artifact (an outline, draft section, or interview-prep questions as fits the task). Also try to schedule work blocks — but if the calendar isn't connected, skip only the scheduling and still do everything else. Finish with a short, specific, past-tense summary of what you did.";
 
@@ -32,6 +50,7 @@ const RESCUE_GOAL =
  * when it finishes.
  */
 export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) {
+  const { stagger, fadeUp, prefersReduced } = useReduced();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [feed, setFeed] = useState<ActionLogEntry[]>([]);
   const [running, setRunning] = useState(false);
@@ -70,6 +89,10 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
     .sort((a, b) => b.risk - a.risk);
   const atRiskCards = scored.filter((c) => c.risk >= AT_RISK_THRESHOLD);
   const atRisk = atRiskCards.length;
+
+  // "Minutes reclaimed" — the payoff stat, shown once a rescue settles.
+  const reclaimed = reclaimedMinutes(tasks.filter(isRescued));
+  const showReclaimed = !running && reclaimed > 0;
 
   // Proactive scan: surface at-risk items on load without a click (cap. 4).
   useEffect(() => {
@@ -171,9 +194,17 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
   }
 
   return (
-    <main className="relative mx-auto w-full max-w-6xl px-6 pb-28 pt-10 sm:pt-12">
-      {/* Header bar — brand left, calendar control right */}
-      <div className="mb-9 flex items-center justify-between gap-4">
+    <motion.main
+      variants={stagger}
+      initial="hidden"
+      animate="show"
+      className="relative mx-auto w-full max-w-6xl px-6 pb-28 pt-10 sm:pt-12"
+    >
+      {/* Banner — brand left, calendar control right (reveal step 1) */}
+      <motion.header
+        variants={fadeUp}
+        className="mb-9 flex items-center justify-between gap-4"
+      >
         <span className="t-caption inline-flex items-center gap-2">
           <span
             className="inline-block h-1.5 w-1.5 rounded-full"
@@ -182,13 +213,14 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
           Clutch
         </span>
         <CalendarConnect status={calStatus} onConnect={connectCalendar} />
-      </div>
+      </motion.header>
 
       <AnimatePresence>
         {calError && (
           <motion.p
+            key="cal-error"
             role="alert"
-            initial={{ opacity: 0, y: -4 }}
+            initial={{ opacity: 0, y: prefersReduced ? 0 : -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             className="t-body mb-6 text-hot"
@@ -198,9 +230,14 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
         )}
       </AnimatePresence>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+      {/* Body grid — relays the stagger so the list (step 2) settles before the
+          rail (step 3): header → list → rail (DESIGN.md §4.1). */}
+      <motion.div
+        variants={stagger}
+        className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]"
+      >
         {/* Main column */}
-        <div className="min-w-0">
+        <motion.div variants={fadeUp} className="min-w-0">
           <AnimatePresence>
             {showScan && (
               <ProactiveScanBanner
@@ -239,14 +276,14 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
             <p className="t-body-l mt-4 max-w-xl text-muted">
               {hasTasks
                 ? "Your week, ranked by what's closest to slipping. Hand it to the agent and watch it work."
-                : "Add your week in plain language and I'll find what's about to slip — then do something about it."}
+                : "Add your week in plain language and I'll find what's about to slip — then handle it."}
             </p>
 
-            <div className="mt-6 flex flex-col items-start gap-3">
+            <div className="mt-6 flex flex-col items-start gap-4">
               <Button variant="primary" onClick={rescue} disabled={!hasTasks || running}>
                 {running ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Rescuing your week…
+                    <Loader2 className="h-4 w-4 animate-spin" /> Rescuing your week&hellip;
                   </>
                 ) : (
                   <>
@@ -256,9 +293,26 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
               </Button>
 
               <AnimatePresence>
+                {showReclaimed && (
+                  <motion.div
+                    key="reclaimed"
+                    initial={{ opacity: 0, y: prefersReduced ? 0 : -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <CountUp value={reclaimed} className="t-display-l text-text" />
+                      <span className="t-label text-muted">min reclaimed</span>
+                    </div>
+                    <p className="t-body mt-1 max-w-xl text-muted">
+                      Time the agent broke down and put on your plan.
+                    </p>
+                  </motion.div>
+                )}
                 {summary && !running && (
                   <motion.p
-                    initial={{ opacity: 0, y: -4 }}
+                    key="summary"
+                    initial={{ opacity: 0, y: prefersReduced ? 0 : -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
                     className="t-body max-w-xl whitespace-pre-wrap"
@@ -269,8 +323,9 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
                 )}
                 {error && (
                   <motion.p
+                    key="error"
                     role="alert"
-                    initial={{ opacity: 0, y: -4 }}
+                    initial={{ opacity: 0, y: prefersReduced ? 0 : -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
                     className="t-body text-hot"
@@ -282,31 +337,38 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
             </div>
           </header>
 
-          <section className="mb-8">
+          <section aria-label="Add to your week" className="mb-8">
             <AddTaskBar />
           </section>
 
-          {hasTasks ? (
-            <TaskList
-              cards={scored}
-              approvedArtifacts={approvedArtifacts}
-              onToggleApprove={toggleApprove}
-            />
-          ) : (
-            <GlassPanel className="py-14 text-center">
-              <p className="t-h2 text-text">Nothing&rsquo;s at risk yet.</p>
-              <p className="t-body mt-2 text-muted">
-                Add your week above, or load a sample to see Clutch in action.
-              </p>
-            </GlassPanel>
-          )}
-        </div>
+          <section aria-label="Your week, ranked by what's closest to slipping">
+            {hasTasks ? (
+              <TaskList
+                cards={scored}
+                approvedArtifacts={approvedArtifacts}
+                onToggleApprove={toggleApprove}
+              />
+            ) : (
+              <GlassPanel className="py-14 text-center">
+                <p className="t-h2 text-text">Nothing&rsquo;s at risk yet.</p>
+                <p className="t-body mt-2 text-muted">
+                  Add your week above and I&rsquo;ll find what&rsquo;s about to slip — then handle
+                  it. Or load a sample week to see Clutch in action.
+                </p>
+              </GlassPanel>
+            )}
+          </section>
+        </motion.div>
 
         {/* Activity rail — docked right on desktop, below on mobile */}
-        <aside className="lg:sticky lg:top-16 lg:self-start">
+        <motion.aside
+          variants={fadeUp}
+          aria-label="Agent activity"
+          className="lg:sticky lg:top-16 lg:self-start"
+        >
           <AgentActivityRail feed={feed} running={running} />
-        </aside>
-      </div>
-    </main>
+        </motion.aside>
+      </motion.div>
+    </motion.main>
   );
 }

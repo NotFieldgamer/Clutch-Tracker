@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Radar, Wand2, Loader2 } from "lucide-react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import Button from "@/components/ui/Button";
@@ -24,13 +24,14 @@ export default function ProactiveScanBanner({
 }) {
   const n = atRiskTasks.length;
   const names = atRiskTasks.slice(0, 3).map((t) => t.title).join(" · ");
+  const reduce = useReducedMotion();
 
   return (
     <motion.div
       className="mb-6"
-      initial={{ opacity: 0, y: -8 }}
+      initial={{ opacity: 0, y: reduce ? 0 : -8 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
+      exit={{ opacity: 0, y: reduce ? 0 : -8 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
     >
       <GlassPanel

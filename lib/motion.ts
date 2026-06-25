@@ -61,5 +61,15 @@ export function useReduced() {
     stagger: prefersReduced ? staggerFade : staggerContainer,
     fadeUp: prefersReduced ? fadeOnly : fadeUp,
     railItem: prefersReduced ? fadeOnly : railItem,
+    /**
+     * Small hover/tap lift for cards & buttons (DESIGN.md §4.5) — dropped
+     * entirely under reduced motion. Spread onto a motion element.
+     */
+    lift: prefersReduced
+      ? {}
+      : {
+          whileHover: { y: -2, transition: spring.entrance },
+          whileTap: { scale: 0.98 },
+        },
   };
 }

@@ -18,7 +18,10 @@
   /* text */
   --text:       #E9EDF7;   /* primary */
   --muted:      #8B94AC;   /* secondary */
-  --faint:      #5C657C;   /* tertiary / captions */
+  /* tertiary / captions — nudged up from DESIGN's #5C657C so small caption text
+     clears AA (#5C657C was ~3.3:1 on --ink; #767F96 is ~4.8:1). DESIGN §8's AA
+     floor takes precedence over the literal token value. */
+  --faint:      #767F96;
 
   /* the agent's own signal — used only for agent actions & the rail */
   --agent:      #8B5CF6;   /* violet */

@@ -43,10 +43,16 @@ export default function CalendarConnect({
         <>
           <Loader2 className="h-4 w-4 animate-spin" /> Connecting…
         </>
+      ) : status === "error" ? (
+        <>
+          <Calendar className="h-4 w-4" /> Reconnect calendar
+        </>
       ) : (
         <>
           <Calendar className="h-4 w-4" />
-          {status === "error" ? "Reconnect calendar" : "Connect Google Calendar"}
+          {/* Shorter label on small screens so the header never overflows at 360px. */}
+          <span className="hidden sm:inline">Connect Google Calendar</span>
+          <span className="sm:hidden">Connect calendar</span>
         </>
       )}
     </Button>

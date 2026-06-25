@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   ChevronDown,
   ListChecks,
@@ -73,6 +73,7 @@ export default function TaskCard({
   onToggleApprove: (artifactId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const reduce = useReducedMotion();
 
   // Countdown is time-dependent → compute on the client to avoid hydration
   // mismatch, and tick it so it stays live.
@@ -97,6 +98,9 @@ export default function TaskCard({
           : "0 0 0 0px rgba(0,0,0,0)",
       }}
       transition={rescueEase}
+      // Small lift on hover (DESIGN.md §4.5) — its own snappy spring so it
+      // doesn't inherit the 700ms de-escalation ease; dropped under reduced motion.
+      whileHover={reduce ? undefined : { y: -2, transition: { type: "spring", stiffness: 300, damping: 30 } }}
     >
       <GlassPanel className="p-0">
         <button
@@ -141,7 +145,9 @@ export default function TaskCard({
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              // Under reduced motion the height slide is dropped (near-instant) —
+              // the content just appears (DESIGN.md §4).
+              transition={reduce ? { duration: 0.01 } : { duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
               className="overflow-hidden"
             >
               <div className="border-t border-line px-5 pb-5 pt-4">
