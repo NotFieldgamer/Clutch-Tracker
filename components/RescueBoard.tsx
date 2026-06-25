@@ -7,15 +7,21 @@ import Button from "@/components/ui/Button";
 import CountUp from "@/components/ui/CountUp";
 import GlassPanel from "@/components/ui/GlassPanel";
 import AddTaskBar from "@/components/AddTaskBar";
-import TaskList from "@/components/TaskList";
+import TaskList, { type ScoredCard } from "@/components/TaskList";
 import AgentActivityRail from "@/components/AgentActivityRail";
 import CalendarConnect, { type CalStatus } from "@/components/CalendarConnect";
+import ProactiveScanBanner from "@/components/ProactiveScanBanner";
 import { getCalendarToken } from "@/lib/google/auth";
 import { riskScore } from "@/lib/riskScore";
 import type { Task, ActionLogEntry } from "@/lib/types";
 
 const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID;
 const AT_RISK_THRESHOLD = 0.5;
+// Once the agent has a real plan in place (steps/blocks/drafts), the risk of
+// the task slipping drops — this is the de-escalation payoff (DESIGN.md §4.2).
+const RESCUED_RISK = 0.1;
+const isRescued = (t: Task) =>
+  t.subSteps.length > 0 || t.blocks.length > 0 || t.artifacts.length > 0;
 const RESCUE_GOAL =
   "Rescue my week. For each task at risk of slipping: prioritize, decompose it into concrete sub-steps, and generate a real first-draft artifact (an outline, draft section, or interview-prep questions as fits the task). Also try to schedule work blocks — but if the calendar isn't connected, skip only the scheduling and still do everything else. Finish with a short, specific, past-tense summary of what you did.";
 
@@ -37,13 +43,52 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
   const [calStatus, setCalStatus] = useState<CalStatus>("idle");
   const [calError, setCalError] = useState<string | null>(null);
 
+  // Approved artifact ids (UI accept/undo) and the proactive scan state.
+  const [approvedArtifacts, setApprovedArtifacts] = useState<Set<string>>(new Set());
+  const [scanState, setScanState] = useState<"scanning" | "ready" | "dismissed">("scanning");
+
   // Re-sync when the server re-renders (e.g. after AddTaskBar adds tasks).
   useEffect(() => {
     setTasks(initialTasks);
   }, [initialTasks]);
 
   const hasTasks = tasks.length > 0;
-  const atRisk = tasks.filter((t) => riskScore(t).score >= AT_RISK_THRESHOLD).length;
+
+  // Score + sort by effective risk (rescued tasks de-escalate to --calm and sink
+  // down the list — the live re-ranking, DESIGN.md §4.3).
+  const scored: ScoredCard[] = tasks
+    .map((t) => {
+      const { score, reason } = riskScore(t);
+      const rescued = isRescued(t);
+      return {
+        task: t,
+        risk: rescued ? RESCUED_RISK : score,
+        reason: rescued ? "Rescued · the agent's on it" : reason,
+        rescued,
+      };
+    })
+    .sort((a, b) => b.risk - a.risk);
+  const atRiskCards = scored.filter((c) => c.risk >= AT_RISK_THRESHOLD);
+  const atRisk = atRiskCards.length;
+
+  // Proactive scan: surface at-risk items on load without a click (cap. 4).
+  useEffect(() => {
+    if (!hasTasks || scanState !== "scanning") return;
+    const id = setTimeout(() => setScanState("ready"), 900);
+    return () => clearTimeout(id);
+  }, [hasTasks, scanState]);
+
+  const showScan =
+    hasTasks && atRisk > 0 && scanState !== "dismissed" && feed.length === 0 && !running;
+
+  function toggleApprove(artifactId: string) {
+    setApprovedArtifacts((s) => {
+      const next = new Set(s);
+      if (next.has(artifactId)) next.delete(artifactId);
+      else next.add(artifactId);
+      return next;
+    });
+  }
 
   async function connectCalendar() {
     if (calStatus === "connecting") return;
@@ -156,6 +201,21 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
         {/* Main column */}
         <div className="min-w-0">
+          <AnimatePresence>
+            {showScan && (
+              <ProactiveScanBanner
+                key="scan"
+                scanning={scanState === "scanning"}
+                atRiskTasks={atRiskCards.map((c) => c.task)}
+                onHandle={() => {
+                  setScanState("dismissed");
+                  rescue();
+                }}
+                onDismiss={() => setScanState("dismissed")}
+              />
+            )}
+          </AnimatePresence>
+
           <header className="mb-8">
             <p className="t-caption mb-3">Today</p>
 
@@ -227,7 +287,11 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
           </section>
 
           {hasTasks ? (
-            <TaskList tasks={tasks} />
+            <TaskList
+              cards={scored}
+              approvedArtifacts={approvedArtifacts}
+              onToggleApprove={toggleApprove}
+            />
           ) : (
             <GlassPanel className="py-14 text-center">
               <p className="t-h2 text-text">Nothing&rsquo;s at risk yet.</p>

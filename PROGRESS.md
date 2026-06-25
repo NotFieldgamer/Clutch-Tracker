@@ -119,15 +119,37 @@ signed-in Google account in a real browser — can't be automated headlessly. Te
   JavaScript origins** (Google Cloud → Credentials) — popups are origin-sensitive.
 - Set `NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID` in Vercel env. Then connect + run a rescue in incognito.
 
-**Next (Step 4 — do-the-work artifacts + extension email + proactive scan)**
-- Flesh out artifacts (essay → outline + draft; interview → prep; bill → parsed amount/date), the
-  one-tap extension email, and an unprompted proactive risk scan on load.
+---
+
+## Step 4 — artifacts UI + proactive scan + de-escalation + live re-ranking ✅
+
+**Done**
+- `components/ArtifactView.tsx`: renders each artifact (outline / draft / prep / email) inside the
+  TaskCard with a **Copy** button and an **approve/undo** toggle; email shows Subject + Body distinctly.
+- Proactive Risk Scan (`components/ProactiveScanBanner.tsx`): on load it briefly "scans" then surfaces
+  the at-risk items unprompted — "N things may slip — want me to handle them?" with a one-click
+  **Handle them** (runs the full rescue) and **Dismiss**.
+- **Risk de-escalation (the payoff, §4.2)**: a task becoming rescued (gains steps/blocks/drafts) is the
+  real state change — RescueBoard recomputes its effective risk to --calm, so the card's RiskMeter eases
+  from its heat color toward --calm (~700ms `rescueEase`) and the card gains a calm glow.
+- **Live re-ranking (§4.3)**: TaskList wraps cards in `LayoutGroup` with `layout="position"` (spring
+  500/40); sorting by effective risk means a rescued task physically slides down to "handled" position.
+  The hero count also de-escalates (e.g. 7 → 6) via CountUp.
+- Verified in-browser (deterministically, since the LLM was 503-saturated): proactive banner scans →
+  ready; a rescued card eases to --calm + glows + drops to the bottom + the count falls; the email
+  ArtifactView shows Subject/Body with Copy and a working Approve↔Undo toggle. `tsc --noEmit` clean,
+  zero console errors.
+
+**Next (Step 5 — persistence + auth)**
+- Persist sub-steps / blocks / artifacts / action-logs via Prisma so rescue outputs survive refresh;
+  optional Clerk auth behind a flag (CLAUDE.md §2), tasks scoped per user.
 
 **Known issues**
-- Gemini flash models are intermittently 503 (high demand); the agent retries + fails over and
-  delivers partial results with an honest summary if a rescue is interrupted mid-loop.
-- `findFreeSlots` working-hours window uses server local time (verbatim) — fine on local dev (IST),
-  but on Vercel (UTC) blocks may land outside the user's 9–21 window. Revisit when persisting/tz work lands.
-- Rescue outputs (incl. scheduled blocks) are held in client state, not yet persisted (reset on refresh).
+- Gemini flash models are intermittently 503 (high demand); the agent retries + fails over and delivers
+  partial results with an honest summary if a rescue is interrupted mid-loop.
+- `findFreeSlots` working-hours window uses server local time (verbatim) — fine on local dev (IST), but
+  on Vercel (UTC) blocks may land outside the user's 9–21 window. Revisit with persistence/tz work.
+- Rescue outputs (steps/blocks/artifacts, approvals) live in client state, not yet persisted (reset on
+  refresh). The de-escalation animation only plays on a live rescue (a real hot→calm state change).
 - No delete/clear UI yet — the dev DB holds the sample week plus a few parse-test tasks.
 - `.env.local` must be filled before any Gemini/Calendar/DB feature works.
