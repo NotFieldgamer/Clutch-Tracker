@@ -1,8 +1,6 @@
 // Clutch — Prisma schema
-// DB: PostgreSQL (Supabase). The pooled URL is used at runtime; the direct URL
-// is used for migrations (Supabase transaction pooler can't run migrations).
-// This is a minimal starting stub — sub-steps / blocks / artifacts / action-logs
-// are added in the data-model build step. See CLAUDE.md §7.
+// DB: PostgreSQL (Supabase). DATABASE_URL is the pooled connection used at
+// runtime; DIRECT_URL is the direct connection used for migrations.
 
 generator client {
   provider = "prisma-client-js"
@@ -14,14 +12,73 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-/// Core unit of work the agent rescues. Expanded in the data-model step.
+/// Core unit of work the agent rescues.
 model Task {
   id          String   @id @default(cuid())
   title       String
   deadline    DateTime
   importance  Int      @default(3) // 1–5
   percentDone Int      @default(0) // 0–100
-  type        String   @default("generic")
+  type        String   @default("generic") // assignment | bill | interview | errand | email | generic
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  subSteps   SubStep[]
+  blocks     Block[]
+  artifacts  Artifact[]
+  actionLogs ActionLog[]
+}
+
+/// A decomposed step of a Task (from the agent's `decompose_task`).
+model SubStep {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title     String
+  done      Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+/// A work-block scheduled into the calendar (from `schedule_block`).
+model Block {
+  id              String   @id @default(cuid())
+  taskId          String
+  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title           String
+  start           DateTime
+  end             DateTime
+  calendarEventId String? // Google Calendar event id, once created
+  status          String   @default("planned") // planned | scheduled | done
+  createdAt       DateTime @default(now())
+
+  @@index([taskId])
+}
+
+/// A real artifact the agent produced (outline, draft, email, prep questions…).
+model Artifact {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  kind      String // outline | draft | email | questions | bill
+  title     String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+/// One line in the Agent Activity rail — a tool the agent called.
+model ActionLog {
+  id        String   @id @default(cuid())
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  tool      String // prioritize | decompose_task | schedule_block | generate_artifact | …
+  summary   String
+  status    String   @default("ok") // ok | error | running
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
 }

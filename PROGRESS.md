@@ -40,12 +40,36 @@ Running log of what&rsquo;s done, what&rsquo;s next, and known issues. Update af
 - Verified in-browser (zero console errors, `tsc --noEmit` clean) — heat scale graduates correctly
   and the rescue de-escalation animates.
 
-**Next (Step 1 — data model + plain-language capture)**
-- Expand `lib/types.ts` core types (Task, SubStep, Block, Artifact, ActionLogEntry).
-- `AddTaskBar` + `/api/parse` (Gemini structured output → Task[]).
-- Render parsed tasks as `TaskCard`s — and replace `FoundationPreview` with the real Today view.
+---
+
+## Step 1 — data model + plain-language task capture ✅
+
+**Done**
+- `prisma/schema.prisma`: full models — `Task` + related `SubStep`, `Block`, `Artifact`, `ActionLog`
+  (cascade deletes, indexes). Initial migration `20260625173243_init` created the tables on Supabase.
+- `lib/db.ts`: singleton Prisma client (global-cached in dev). `lib/types.ts` (ParsedTask / TaskDTO /
+  ScoredTask). `lib/riskScore.ts`: **placeholder** risk model (deadline × importance × % remaining)
+  + plain-language `riskReason()` — replaced by the LOGIC_SNIPPETS version next.
+- `app/api/parse` (nodejs): free text → Gemini structured output (responseSchema) → normalized →
+  persisted via Prisma. **Model fail-over**: primary `gemini-3.5-flash`, falling back to
+  `gemini-3-flash-preview` / `gemini-2.5-flash` on transient 503/429 (the pinned model is currently
+  overloaded for this key). Friendly, in-voice errors for every failure path.
+- `app/api/seed` (nodejs): "Load a sample week" — seeds a realistic, idempotent at-risk week.
+- `components/AddTaskBar` (input + parse + seed, loading + error states), `TaskCard` (display title,
+  RiskMeter + reason, live mono countdown, expand affordance via GlassPanel), `TaskList` (page-load
+  stagger). Removed the temporary `FoundationPreview`.
+- `app/page.tsx`: the Today / Rescue view — hero (animated at-risk count + Rescue **placeholder**),
+  AddTaskBar, ranked task list (by deadline), empty state. Reads tasks server-side (`force-dynamic`).
+- Verified end-to-end in-browser: seed + real Gemini parse (correct relative-date resolution), heat
+  scale graduates, expand + Rescue interactions work, `tsc --noEmit` clean, zero console errors.
+
+**Next (Step 2 — agent loop + tools + Activity rail)**
+- `agent/tools.ts` + `agent/agentLoop.ts`, `/api/agent` (perceive→plan→act→observe, streamed).
+- The signature **Agent Activity rail**, and wire the real "Rescue my week" action.
+- Swap the `riskScore` placeholder for the LOGIC_SNIPPETS version.
 
 **Known issues**
-- `FoundationPreview` is a temporary preview to be removed once the Today view lands.
-- Prisma schema is a stub — real models (sub-steps, blocks, artifacts, action-logs) land with persistence.
-- `.env.local` must be filled before any Gemini/Calendar/DB feature works.
+- Pinned `gemini-3.5-flash` is intermittently 503 (high demand); the route fails over automatically.
+- `riskScore.ts` is a placeholder pending the LOGIC_SNIPPETS version.
+- No delete/clear UI yet — the dev DB currently holds the sample week plus a few parse-test tasks.
+- `.env.local` must be filled before any Gemini/DB feature works.
