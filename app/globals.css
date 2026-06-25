@@ -65,6 +65,64 @@
   }
 }
 
+/* ============================================================
+   Type scale — DESIGN.md §3. Reusable classes (Display = Space
+   Grotesk, Body/UI = Geist Sans, data/rail = Geist Mono).
+   ============================================================ */
+@layer components {
+  .t-display-xl {
+    font-family: var(--font-space-grotesk), system-ui, sans-serif;
+    font-weight: 600;
+    font-size: clamp(2.6rem, 6vw, 4.25rem);
+    letter-spacing: -0.02em;
+    line-height: 1.02;
+  }
+  .t-display-l {
+    font-family: var(--font-space-grotesk), system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 2rem;
+    letter-spacing: -0.015em;
+    line-height: 1.12;
+  }
+  .t-h2 {
+    font-family: var(--font-space-grotesk), system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 1.375rem;
+    line-height: 1.25;
+  }
+  .t-body-l {
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-weight: 400;
+    font-size: 1.0625rem;
+    line-height: 1.6;
+  }
+  .t-body {
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-weight: 400;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+  .t-label {
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-weight: 500;
+    font-size: 0.8125rem;
+    letter-spacing: 0.01em;
+  }
+  .t-mono {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-weight: 400;
+    font-size: 0.8125rem;
+  }
+  .t-caption {
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-weight: 500;
+    font-size: 0.75rem;
+    color: var(--faint);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+}
+
 /* Honor prefers-reduced-motion globally — big motion is swapped for fades
    per component; this is the safety net (DESIGN.md §4). */
 @media (prefers-reduced-motion: reduce) {
