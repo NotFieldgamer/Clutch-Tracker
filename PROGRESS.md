@@ -90,14 +90,44 @@ Running log of what&rsquo;s done, what&rsquo;s next, and known issues. Update af
   generate_artifact (outline + interview-prep) → draft_communication (ready-to-send email); the rail
   streamed live; cards filled with sub-steps + a drafted email. `tsc --noEmit` clean, zero console errors.
 
-**Next (Step 3 — Google Calendar)**
-- Wire `lib/google/auth.ts` (GIS token) + a "Connect Google Calendar" button; pass the token into
-  `/api/agent` so `find_free_slots` / `schedule_block` create real events.
+---
+
+## Step 3 — real Google Calendar ✅
+
+**Done**
+- `app/layout.tsx` loads the GIS script (`accounts.google.com/gsi/client`, `next/script`
+  afterInteractive). Verified loaded: `window.google.accounts.oauth2.initTokenClient` is present.
+- `components/CalendarConnect.tsx` — premium header control with idle / connecting / connected /
+  error states (calendar icon → "Connect Google Calendar"; green check + "Calendar connected").
+- `RescueBoard` owns `calToken` / `calStatus` / `calError`; `connectCalendar()` runs
+  `getCalendarToken(NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID)` (GIS readiness + missing-id guards, friendly
+  errors in the agent's voice). Verified the click flips the control to "Connecting…" and opens the
+  GIS consent popup with no console error.
+- The token is passed to `/api/agent` as `calendarToken`, so the verbatim `find_free_slots` /
+  `schedule_block` act on the real calendar. Plumbing verified: `findFreeSlots(<token>)` reaches the
+  real Calendar v3 freeBusy API (dummy token → `freeBusy 401`, exactly as expected).
+- `TaskCard` shows scheduled blocks with the event time (mono) and a --calm check when the block is a
+  real Google Calendar event (`calendarEventId`).
+- A new top header bar carries the brand (left) + the calendar control (right).
+
+**Couldn't fully verify (needs you):** the live OAuth **consent** + real event creation requires a
+signed-in Google account in a real browser — can't be automated headlessly. Test it on
+`http://localhost:3000` (your account is a Test user) and on the deployed Vercel URL.
+
+**Deploy / OAuth checklist for the Vercel URL**
+- Add the Vercel origin (e.g. `https://clutch-xxx.vercel.app`) to the OAuth client's **Authorized
+  JavaScript origins** (Google Cloud → Credentials) — popups are origin-sensitive.
+- Set `NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID` in Vercel env. Then connect + run a rescue in incognito.
+
+**Next (Step 4 — do-the-work artifacts + extension email + proactive scan)**
+- Flesh out artifacts (essay → outline + draft; interview → prep; bill → parsed amount/date), the
+  one-tap extension email, and an unprompted proactive risk scan on load.
 
 **Known issues**
-- Gemini flash models are intermittently 503 (high demand) right now; the agent retries + fails over,
-  and delivers partial results with an honest summary if a rescue is interrupted mid-loop.
-- Calendar tools fail by design until Step 3 (no token) — surfaced as recoverable --hot rail lines.
-- Rescue outputs are held in client state, not yet persisted (they reset on refresh).
+- Gemini flash models are intermittently 503 (high demand); the agent retries + fails over and
+  delivers partial results with an honest summary if a rescue is interrupted mid-loop.
+- `findFreeSlots` working-hours window uses server local time (verbatim) — fine on local dev (IST),
+  but on Vercel (UTC) blocks may land outside the user's 9–21 window. Revisit when persisting/tz work lands.
+- Rescue outputs (incl. scheduled blocks) are held in client state, not yet persisted (reset on refresh).
 - No delete/clear UI yet — the dev DB holds the sample week plus a few parse-test tasks.
-- `.env.local` must be filled before any Gemini/DB feature works.
+- `.env.local` must be filled before any Gemini/Calendar/DB feature works.

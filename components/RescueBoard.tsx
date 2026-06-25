@@ -9,9 +9,12 @@ import GlassPanel from "@/components/ui/GlassPanel";
 import AddTaskBar from "@/components/AddTaskBar";
 import TaskList from "@/components/TaskList";
 import AgentActivityRail from "@/components/AgentActivityRail";
+import CalendarConnect, { type CalStatus } from "@/components/CalendarConnect";
+import { getCalendarToken } from "@/lib/google/auth";
 import { riskScore } from "@/lib/riskScore";
 import type { Task, ActionLogEntry } from "@/lib/types";
 
+const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID;
 const AT_RISK_THRESHOLD = 0.5;
 const RESCUE_GOAL =
   "Rescue my week. For each task at risk of slipping: prioritize, decompose it into concrete sub-steps, and generate a real first-draft artifact (an outline, draft section, or interview-prep questions as fits the task). Also try to schedule work blocks — but if the calendar isn't connected, skip only the scheduling and still do everything else. Finish with a short, specific, past-tense summary of what you did.";
@@ -29,6 +32,11 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
   const [summary, setSummary] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // Google Calendar (client-side OAuth token, held in memory).
+  const [calToken, setCalToken] = useState<string | null>(null);
+  const [calStatus, setCalStatus] = useState<CalStatus>("idle");
+  const [calError, setCalError] = useState<string | null>(null);
+
   // Re-sync when the server re-renders (e.g. after AddTaskBar adds tasks).
   useEffect(() => {
     setTasks(initialTasks);
@@ -36,6 +44,32 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
 
   const hasTasks = tasks.length > 0;
   const atRisk = tasks.filter((t) => riskScore(t).score >= AT_RISK_THRESHOLD).length;
+
+  async function connectCalendar() {
+    if (calStatus === "connecting") return;
+    setCalError(null);
+    if (!CLIENT_ID) {
+      setCalStatus("error");
+      setCalError("Calendar isn't set up yet — add NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID and reload.");
+      return;
+    }
+    // Google Identity Services loads async (see app/layout.tsx).
+    const gis = (window as unknown as { google?: { accounts?: { oauth2?: unknown } } }).google;
+    if (!gis?.accounts?.oauth2) {
+      setCalStatus("error");
+      setCalError("Google sign-in is still loading — give it a second and try again.");
+      return;
+    }
+    setCalStatus("connecting");
+    try {
+      const token = await getCalendarToken(CLIENT_ID);
+      setCalToken(token);
+      setCalStatus("connected");
+    } catch {
+      setCalStatus("error");
+      setCalError("Couldn't reach your calendar. Allow calendar access and try again.");
+    }
+  }
 
   async function rescue() {
     if (running || !hasTasks) return;
@@ -47,7 +81,7 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal: RESCUE_GOAL, tasks, calendarToken: null }),
+        body: JSON.stringify({ goal: RESCUE_GOAL, tasks, calendarToken: calToken }),
       });
 
       if (!res.ok || !res.body) {
@@ -92,18 +126,38 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
   }
 
   return (
-    <main className="relative mx-auto w-full max-w-6xl px-6 pb-28 pt-16 sm:pt-20">
+    <main className="relative mx-auto w-full max-w-6xl px-6 pb-28 pt-10 sm:pt-12">
+      {/* Header bar — brand left, calendar control right */}
+      <div className="mb-9 flex items-center justify-between gap-4">
+        <span className="t-caption inline-flex items-center gap-2">
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full"
+            style={{ backgroundColor: "var(--agent)", boxShadow: "0 0 10px var(--agent-glow)" }}
+          />
+          Clutch
+        </span>
+        <CalendarConnect status={calStatus} onConnect={connectCalendar} />
+      </div>
+
+      <AnimatePresence>
+        {calError && (
+          <motion.p
+            role="alert"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="t-body mb-6 text-hot"
+          >
+            {calError}
+          </motion.p>
+        )}
+      </AnimatePresence>
+
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
         {/* Main column */}
         <div className="min-w-0">
           <header className="mb-8">
-            <p className="t-caption mb-3 inline-flex items-center gap-2">
-              <span
-                className="inline-block h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: "var(--agent)", boxShadow: "0 0 10px var(--agent-glow)" }}
-              />
-              Today · Clutch
-            </p>
+            <p className="t-caption mb-3">Today</p>
 
             {!hasTasks ? (
               <h1 className="t-display-xl text-text">

@@ -153,7 +153,16 @@ export default function TaskCard({ task }: { task: Task }) {
                       <ul className="space-y-1.5">
                         {task.blocks.map((b) => (
                           <li key={b.id} className="flex items-center justify-between gap-3">
-                            <span className="t-body truncate text-text">{b.title}</span>
+                            <span className="flex min-w-0 items-center gap-2">
+                              {b.calendarEventId && (
+                                <Check
+                                  className="h-3.5 w-3.5 shrink-0"
+                                  style={{ color: "var(--calm)" }}
+                                  aria-label="On Google Calendar"
+                                />
+                              )}
+                              <span className="t-body truncate text-text">{b.title}</span>
+                            </span>
                             <span className="t-mono shrink-0 text-muted">{fmtTime(b.startISO)}</span>
                           </li>
                         ))}

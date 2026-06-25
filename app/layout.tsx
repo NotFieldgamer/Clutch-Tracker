@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { Space_Grotesk } from "next/font/google";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
@@ -35,6 +36,8 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <AmbientBg />
         {children}
+        {/* Google Identity Services — client-side OAuth for Calendar (lib/google/auth.ts). */}
+        <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
       </body>
     </html>
   );
