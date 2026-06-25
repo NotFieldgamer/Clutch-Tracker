@@ -199,6 +199,35 @@ signed-in Google account in a real browser — can't be automated headlessly. Te
   errors (only Clerk's benign dev-keys notice); auth OFF (keys blank) → `/` 200, app serves with no
   Clerk. `tsc --noEmit` clean.
 
+---
+
+## Fix — auth redirect loop (signed-in client vs. signed-out server) ✅
+
+**Symptom:** with Clerk on, after signing in the app was stuck on `/sign-in`; console showed
+"`<SignIn/>` cannot render when a user is already signed in… redirecting to the afterSignIn URL".
+
+**Root cause:** the signed-out gate lived in the **page server component** (`app/page.tsx` read `auth()`
+then `redirect("/sign-in")`). On Clerk **dev** instances the session is resolved by a middleware
+*handshake*; reading `auth()` in the page raced it, so `/` saw `userId = null` for a user the client
+considered signed in. `/sign-in` (client: signed in → go `/`) and `/` (server: signed out → go
+`/sign-in`) disagreed forever → infinite loop. The `matcher` also omitted Clerk's `/__clerk/(.*)`
+handshake route.
+
+**Fix (Clerk's documented pattern — gate in middleware, post-handshake):**
+- `middleware.ts`: `clerkMiddleware()` now redirects signed-out users to `/sign-in` itself
+  (`createRouteMatcher` keeps `/sign-in`, `/api`, `/trpc` public); added `/__clerk/(.*)` to the matcher.
+- `app/page.tsx`: removed the racy `auth()`→`redirect` gate (middleware owns it); still reads `userId`
+  for scoping.
+- `app/sign-in/…/page.tsx`: server-side guard redirects an already-signed-in user home before
+  `<SignIn/>` renders (kills the client "already signed in" flash).
+- `.env.local`: added `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in` (+ sign-up + fallback redirects) so
+  Clerk's flows stay on the themed page instead of the hosted Account Portal.
+- **Verified:** fresh dev server (auth on, no cookie) → `GET /` 307 → `/sign-in` (exactly 1 hop, no
+  loop), `/sign-in` 200, no "can't detect clerkMiddleware" errors, `tsc --noEmit` clean.
+- **Requires a dev-server restart** to pick up the new `NEXT_PUBLIC_*` env + recompiled middleware.
+
+---
+
 **Known issues**
 - Gemini flash models are intermittently 503 (high demand); the agent retries + fails over and delivers
   partial results with an honest summary if a rescue is interrupted mid-loop.

@@ -1,5 +1,5 @@
 import { SignIn } from "@clerk/nextjs";
-import { authEnabled } from "@/lib/auth";
+import { authEnabled, getUserId } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -9,8 +9,11 @@ export const dynamic = "force-dynamic";
  * Clerk's <SignIn/> themed via the global appearance in app/layout.tsx. If auth
  * isn't configured there's nothing to sign into — send people home.
  */
-export default function SignInPage() {
+export default async function SignInPage() {
   if (!authEnabled()) redirect("/");
+  // Already signed in? Skip <SignIn/> entirely (it would client-redirect and
+  // flash Clerk's "already signed in" notice) — go straight home.
+  if (await getUserId()) redirect("/");
 
   return (
     <main className="relative mx-auto flex min-h-[100dvh] w-full max-w-md flex-col items-center justify-center px-6 py-16">

@@ -1,7 +1,6 @@
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import RescueBoard from "@/components/RescueBoard";
-import { authEnabled, getUserId, taskScope } from "@/lib/auth";
+import { getUserId, taskScope } from "@/lib/auth";
 import type { Task } from "@/lib/types";
 
 // Always read fresh tasks on request (the view reflects DB writes immediately).
@@ -54,10 +53,11 @@ async function loadTasks(userId: string | null): Promise<Task[]> {
 }
 
 export default async function Home() {
+  // When auth is on, middleware.ts has already gated this route — a signed-out
+  // user was redirected to /sign-in there (after the session handshake), so we
+  // only read the id for scoping. No page-level redirect → no /sign-in ⇄ /
+  // loop. The no-auth path returns userId null and loads global tasks.
   const userId = await getUserId();
-  // Auth on but signed out → go sign in (no-auth path skips this entirely).
-  if (authEnabled() && !userId) redirect("/sign-in");
-
   const tasks = await loadTasks(userId);
   return <RescueBoard initialTasks={tasks} />;
 }
