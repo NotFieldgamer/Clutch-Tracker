@@ -1,10 +1,28 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Type } from "@google/genai";
 import { prisma } from "@/lib/db";
-import { TASK_TYPES, type ParsedTask, type TaskDTO } from "@/lib/types";
 
 // Prisma + @google/genai need the Node.js runtime (not edge).
 export const runtime = "nodejs";
+
+// Parse-/wire-specific shapes. The canonical app types live in lib/types.ts;
+// task `type` is constrained to the canonical TaskType set.
+const ALLOWED_TYPES = ["assignment", "bill", "interview", "meeting", "errand", "other"] as const;
+interface ParsedTask {
+  title: string;
+  deadlineISO: string;
+  importance: number;
+  percentDone: number;
+  type: string;
+}
+interface TaskDTO {
+  id: string;
+  title: string;
+  deadlineISO: string;
+  importance: number;
+  percentDone: number;
+  type: string;
+}
 
 // Pinned in CLAUDE.md §2 (swappable). gemini-3.5-flash is the primary; the
 // rest are fallbacks tried in order when the primary is transiently overloaded
@@ -49,7 +67,7 @@ const RESPONSE_SCHEMA = {
       type: {
         type: Type.STRING,
         description:
-          "One of: assignment, bill, interview, errand, email, generic.",
+          "One of: assignment, bill, interview, meeting, errand, other.",
       },
     },
     required: ["title", "deadlineISO", "importance", "percentDone", "type"],
@@ -64,7 +82,7 @@ function clampInt(n: unknown, lo: number, hi: number, fallback: number): number 
 
 function normalizeType(t: unknown): string {
   const s = String(t ?? "").toLowerCase().trim();
-  return (TASK_TYPES as string[]).includes(s) ? s : "generic";
+  return (ALLOWED_TYPES as readonly string[]).includes(s) ? s : "other";
 }
 
 const toDTO = (t: {

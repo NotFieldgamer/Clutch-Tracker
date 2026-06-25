@@ -63,13 +63,41 @@ Running log of what&rsquo;s done, what&rsquo;s next, and known issues. Update af
 - Verified end-to-end in-browser: seed + real Gemini parse (correct relative-date resolution), heat
   scale graduates, expand + Rescue interactions work, `tsc --noEmit` clean, zero console errors.
 
-**Next (Step 2 — agent loop + tools + Activity rail)**
-- `agent/tools.ts` + `agent/agentLoop.ts`, `/api/agent` (perceive→plan→act→observe, streamed).
-- The signature **Agent Activity rail**, and wire the real "Rescue my week" action.
-- Swap the `riskScore` placeholder for the LOGIC_SNIPPETS version.
+---
+
+## Step 2 — agent loop + tools + the Activity rail ✅
+
+**Done**
+- Created the agent core **verbatim from LOGIC_SNIPPETS.md**: `lib/types.ts`, `lib/riskScore.ts`,
+  `lib/systemPrompt.ts`, `lib/google/calendar.ts`, `lib/google/auth.ts`, `agent/tools.ts`,
+  `agent/agentLoop.ts` (the perceive→plan→act→observe function-calling loop + 7 tool schemas).
+- **Two SDK drift fixes** (verified vs @google/genai docs, the only deviations from verbatim):
+  1. `FunctionCall.name` is optional → guarded `executeTool(call.name ?? "", …)`.
+  2. **thought_signature**: current Gemini models reject history that drops the `thoughtSignature`
+     on functionCall parts (400). Echo `res.candidates[0].content` back instead of a reconstructed
+     part. This was the fix that made the multi-turn loop actually chain tools.
+- `app/api/agent/route.ts` (nodejs, maxDuration 60): runs `runRescue`, **streams each ActionLogEntry
+  as NDJSON** to the client, returns updated tasks + summary at the end. A resilient GoogleGenAI
+  wrapper retries/fails over models on transient 503/429 without touching the verbatim loop; on a
+  mid-loop failure it delivers the partial (in-place-mutated) tasks with an honest summary.
+- `components/AgentActivityRail.tsx` — the signature element: mono ops log docked right (below on
+  mobile), "● live" pulse while running, entries stream via AnimatePresence (violet tick, verb-first
+  summary, mono timestamp), successes settle to --text with a brief --calm glow, failures flash --hot.
+- `components/RescueBoard.tsx` — owns task + feed state; "Rescue my week" streams into the rail live
+  and drops sub-steps / blocks / artifacts onto the cards on finish. `TaskCard` now renders them.
+- Reconciled Step-1 code to the canonical `lib/types.ts` (TaskType set, `riskScore → {score,reason}`).
+- Verified in-browser: a real rescue chained prioritize → decompose×2 → find_free_slots (recovered) →
+  generate_artifact (outline + interview-prep) → draft_communication (ready-to-send email); the rail
+  streamed live; cards filled with sub-steps + a drafted email. `tsc --noEmit` clean, zero console errors.
+
+**Next (Step 3 — Google Calendar)**
+- Wire `lib/google/auth.ts` (GIS token) + a "Connect Google Calendar" button; pass the token into
+  `/api/agent` so `find_free_slots` / `schedule_block` create real events.
 
 **Known issues**
-- Pinned `gemini-3.5-flash` is intermittently 503 (high demand); the route fails over automatically.
-- `riskScore.ts` is a placeholder pending the LOGIC_SNIPPETS version.
-- No delete/clear UI yet — the dev DB currently holds the sample week plus a few parse-test tasks.
+- Gemini flash models are intermittently 503 (high demand) right now; the agent retries + fails over,
+  and delivers partial results with an honest summary if a rescue is interrupted mid-loop.
+- Calendar tools fail by design until Step 3 (no token) — surfaced as recoverable --hot rail lines.
+- Rescue outputs are held in client state, not yet persisted (they reset on refresh).
+- No delete/clear UI yet — the dev DB holds the sample week plus a few parse-test tasks.
 - `.env.local` must be filled before any Gemini/DB feature works.

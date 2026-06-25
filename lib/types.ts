@@ -1,49 +1,21 @@
-/**
- * App-facing types. The DB shape lives in prisma/schema.prisma; these are the
- * serialized (Date → ISO string) shapes that cross the server→client boundary.
- *
- * Note: CLAUDE.md §5 expects a fuller lib/types.ts from LOGIC_SNIPPETS.md in a
- * later step; this is the minimal set the Today view needs now.
- */
+export type TaskType = "assignment" | "bill" | "interview" | "meeting" | "errand" | "other";
 
-export type TaskType =
-  | "assignment"
-  | "bill"
-  | "interview"
-  | "errand"
-  | "email"
-  | "generic";
-
-export const TASK_TYPES: TaskType[] = [
-  "assignment",
-  "bill",
-  "interview",
-  "errand",
-  "email",
-  "generic",
-];
-
-/** What Gemini returns from /api/parse for each item of free text. */
-export interface ParsedTask {
-  title: string;
-  deadlineISO: string;
-  importance: number; // 1–5
-  percentDone: number; // 0–100
-  type: string;
+export interface SubStep { id: string; title: string; effortMin: number; done: boolean; }
+export interface Block {
+  id: string; taskId: string; startISO: string; endISO: string; title: string; calendarEventId?: string;
 }
-
-/** A persisted task, serialized for the client (deadline as an ISO string). */
-export interface TaskDTO {
+export interface Artifact {
+  id: string; taskId: string; kind: "outline" | "draft" | "email" | "prep" | "note"; content: string;
+}
+export interface Task {
   id: string;
   title: string;
   deadlineISO: string;
-  importance: number;
-  percentDone: number;
-  type: string;
+  importance: number;   // 1..5
+  percentDone: number;  // 0..100
+  type: TaskType;
+  subSteps: SubStep[];
+  blocks: Block[];
+  artifacts: Artifact[];
 }
-
-/** A task plus its server-computed risk, ready to render in a TaskCard. */
-export interface ScoredTask extends TaskDTO {
-  risk: number; // 0..1
-  reason: string; // plain-language risk reason
-}
+export interface ActionLogEntry { id: string; tool: string; summary: string; at: string; ok: boolean; }

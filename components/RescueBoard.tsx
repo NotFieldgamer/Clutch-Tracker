@@ -1,0 +1,194 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Wand2, Loader2 } from "lucide-react";
+import Button from "@/components/ui/Button";
+import CountUp from "@/components/ui/CountUp";
+import GlassPanel from "@/components/ui/GlassPanel";
+import AddTaskBar from "@/components/AddTaskBar";
+import TaskList from "@/components/TaskList";
+import AgentActivityRail from "@/components/AgentActivityRail";
+import { riskScore } from "@/lib/riskScore";
+import type { Task, ActionLogEntry } from "@/lib/types";
+
+const AT_RISK_THRESHOLD = 0.5;
+const RESCUE_GOAL =
+  "Rescue my week. For each task at risk of slipping: prioritize, decompose it into concrete sub-steps, and generate a real first-draft artifact (an outline, draft section, or interview-prep questions as fits the task). Also try to schedule work blocks — but if the calendar isn't connected, skip only the scheduling and still do everything else. Finish with a short, specific, past-tense summary of what you did.";
+
+/**
+ * RescueBoard — the interactive Today / Rescue view. Owns task + activity-feed
+ * state so the "Rescue my week" button can stream the agent's log into the rail
+ * live and drop the updated tasks (sub-steps, blocks, artifacts) onto the cards
+ * when it finishes.
+ */
+export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) {
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [feed, setFeed] = useState<ActionLogEntry[]>([]);
+  const [running, setRunning] = useState(false);
+  const [summary, setSummary] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  // Re-sync when the server re-renders (e.g. after AddTaskBar adds tasks).
+  useEffect(() => {
+    setTasks(initialTasks);
+  }, [initialTasks]);
+
+  const hasTasks = tasks.length > 0;
+  const atRisk = tasks.filter((t) => riskScore(t).score >= AT_RISK_THRESHOLD).length;
+
+  async function rescue() {
+    if (running || !hasTasks) return;
+    setRunning(true);
+    setFeed([]);
+    setSummary("");
+    setError(null);
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal: RESCUE_GOAL, tasks, calendarToken: null }),
+      });
+
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Couldn't start the rescue. Try again.");
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+          let msg: { type: string; entry?: ActionLogEntry; tasks?: Task[]; finalText?: string; error?: string };
+          try {
+            msg = JSON.parse(line);
+          } catch {
+            continue;
+          }
+          if (msg.type === "log" && msg.entry) {
+            setFeed((f) => [...f, msg.entry as ActionLogEntry]);
+          } else if (msg.type === "done") {
+            if (msg.tasks) setTasks(msg.tasks);
+            setSummary(msg.finalText ?? "");
+          } else if (msg.type === "error") {
+            setError(msg.error ?? "The rescue failed. Try again.");
+          }
+        }
+      }
+    } catch {
+      setError("Lost the connection mid-rescue. Try again.");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <main className="relative mx-auto w-full max-w-6xl px-6 pb-28 pt-16 sm:pt-20">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+        {/* Main column */}
+        <div className="min-w-0">
+          <header className="mb-8">
+            <p className="t-caption mb-3 inline-flex items-center gap-2">
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: "var(--agent)", boxShadow: "0 0 10px var(--agent-glow)" }}
+              />
+              Today · Clutch
+            </p>
+
+            {!hasTasks ? (
+              <h1 className="t-display-xl text-text">
+                Nothing&rsquo;s at risk <span className="text-muted">yet.</span>
+              </h1>
+            ) : atRisk > 0 ? (
+              <h1 className="t-display-xl text-text">
+                <CountUp value={atRisk} />{" "}
+                <span className="text-muted">
+                  {atRisk === 1 ? "thing may slip." : "things may slip."}
+                </span>
+              </h1>
+            ) : (
+              <h1 className="t-display-xl text-text">
+                You&rsquo;re clear. <span className="text-muted">Nothing&rsquo;s slipping.</span>
+              </h1>
+            )}
+
+            <p className="t-body-l mt-4 max-w-xl text-muted">
+              {hasTasks
+                ? "Your week, ranked by what's closest to slipping. Hand it to the agent and watch it work."
+                : "Add your week in plain language and I'll find what's about to slip — then do something about it."}
+            </p>
+
+            <div className="mt-6 flex flex-col items-start gap-3">
+              <Button variant="primary" onClick={rescue} disabled={!hasTasks || running}>
+                {running ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Rescuing your week…
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="h-4 w-4" /> Rescue my week
+                  </>
+                )}
+              </Button>
+
+              <AnimatePresence>
+                {summary && !running && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="t-body max-w-xl whitespace-pre-wrap"
+                    style={{ color: "var(--calm)" }}
+                  >
+                    {summary}
+                  </motion.p>
+                )}
+                {error && (
+                  <motion.p
+                    role="alert"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="t-body text-hot"
+                  >
+                    {error}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </div>
+          </header>
+
+          <section className="mb-8">
+            <AddTaskBar />
+          </section>
+
+          {hasTasks ? (
+            <TaskList tasks={tasks} />
+          ) : (
+            <GlassPanel className="py-14 text-center">
+              <p className="t-h2 text-text">Nothing&rsquo;s at risk yet.</p>
+              <p className="t-body mt-2 text-muted">
+                Add your week above, or load a sample to see Clutch in action.
+              </p>
+            </GlassPanel>
+          )}
+        </div>
+
+        {/* Activity rail — docked right on desktop, below on mobile */}
+        <aside className="lg:sticky lg:top-16 lg:self-start">
+          <AgentActivityRail feed={feed} running={running} />
+        </aside>
+      </div>
+    </main>
+  );
+}

@@ -3,13 +3,13 @@
 import { motion } from "framer-motion";
 import { useReduced } from "@/lib/motion";
 import TaskCard from "@/components/TaskCard";
-import type { ScoredTask } from "@/lib/types";
+import type { Task } from "@/lib/types";
 
 /**
  * TaskList — the ranked task list with the page-load stagger from
  * lib/motion.ts (DESIGN.md §4.1). New tasks fade up as they're added.
  */
-export default function TaskList({ tasks }: { tasks: ScoredTask[] }) {
+export default function TaskList({ tasks }: { tasks: Task[] }) {
   const { stagger, fadeUp } = useReduced();
 
   return (

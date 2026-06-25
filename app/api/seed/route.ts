@@ -10,7 +10,7 @@ export const runtime = "nodejs";
  * that already exist, so repeat clicks don't duplicate.
  */
 const SAMPLE = [
-  { title: "Reply to Prof. Rao about the recommendation letter", dayOffset: 0, hour: 21, importance: 4, percentDone: 0, type: "email" },
+  { title: "Reply to Prof. Rao about the recommendation letter", dayOffset: 0, hour: 21, importance: 4, percentDone: 0, type: "other" },
   { title: "Operating Systems assignment 3", dayOffset: 1, hour: 23, importance: 5, percentDone: 20, type: "assignment" },
   { title: "Pay the electricity bill", dayOffset: 2, hour: 18, importance: 4, percentDone: 0, type: "bill" },
   { title: "Buy Mom a birthday gift", dayOffset: 3, hour: 20, importance: 4, percentDone: 0, type: "errand" },
