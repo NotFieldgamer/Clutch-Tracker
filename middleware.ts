@@ -29,8 +29,11 @@ export default authEnabled()
 
 export const config = {
   matcher: [
-    // Everything except Next internals and static files…
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    // Everything except Next internals, static files, and the Workflow DevKit's
+    // internal endpoints. Excluding `.well-known/workflow` is REQUIRED — if Clerk
+    // middleware intercepts `POST /.well-known/workflow/v1/flow` the durable agent
+    // silently fails ("Queue operation failed / detached ArrayBuffer").
+    "/((?!_next|\\.well-known/workflow|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     // …always on API routes so auth() resolves inside handlers…
     "/(api|trpc)(.*)",
     // …and always on Clerk's frontend API routes so the session handshake

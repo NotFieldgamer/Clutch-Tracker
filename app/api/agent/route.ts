@@ -1,5 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
+import { start } from "workflow/api";
 import { runRescue } from "@/agent/agentLoop";
+import { rescueWorkflow } from "@/agent/rescueWorkflow";
 import { prisma } from "@/lib/db";
 import { persistRescue } from "@/lib/persist";
 import { authEnabled, getUserId } from "@/lib/auth";
@@ -8,6 +10,11 @@ import type { Task, ActionLogEntry } from "@/lib/types";
 // The agent loop + Prisma need Node.js; a rescue chains several model calls.
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+// Flag-gated rollout: when "1", run the rescue as a durable Vercel Workflow
+// (agent/rescueWorkflow.ts) that survives the 60s limit + interruptions. Off by
+// default → the legacy inline loop below runs, so the demo is never at risk.
+const USE_DURABLE_AGENT = process.env.USE_DURABLE_AGENT === "1";
 
 // The verbatim runRescue defaults to gemini-3.5-flash, which is currently
 // overloaded for this key (503). We drive the loop with gemini-2.5-flash and
@@ -112,6 +119,35 @@ export async function POST(req: Request) {
   if (authEnabled() && !userId) {
     return Response.json({ error: "Sign in to rescue your week." }, { status: 401 });
   }
+
+  // ── Durable path (flag-gated) ──────────────────────────────────────────────
+  // Start the rescue as a background Workflow and stream its "rail" namespace
+  // back as the same NDJSON the client already parses. The workflow persists each
+  // tool's output to the DB itself (scoped to userId), so even if this streaming
+  // response is cut at maxDuration the rescue completes and survives a refresh.
+  if (USE_DURABLE_AGENT) {
+    const slim = tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      type: t.type,
+      percentDone: t.percentDone,
+      deadlineISO: t.deadlineISO,
+      importance: t.importance,
+    }));
+    const run = await start(rescueWorkflow, [{ goal, tasks: slim, userId, calendarToken }]);
+    const rail = run
+      .getReadable<string>({ namespace: "rail" })
+      .pipeThrough(new TextEncoderStream());
+    return new Response(rail, {
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  }
+  // ── Legacy inline path (default) ───────────────────────────────────────────
+
   const ownedIds = authEnabled()
     ? new Set(
         (await prisma.task.findMany({ where: { userId }, select: { id: true } })).map((r) => r.id),

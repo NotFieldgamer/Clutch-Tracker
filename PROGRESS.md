@@ -201,6 +201,54 @@ signed-in Google account in a real browser — can't be automated headlessly. Te
 
 ---
 
+## Migration — durable rescue agent on the Vercel Workflow DevKit ✅ (flag-gated, on a branch)
+
+Branch `feat/durable-agent-workflow`. Re-implements the agent loop on the **Vercel Workflow
+DevKit** (`workflow` + `@workflow/ai` `DurableAgent`) + **AI SDK** (`ai` + `@ai-sdk/google`), so a
+rescue survives the 60s serverless limit + mid-flight interruptions and persists each tool's output
+as it goes. **Off by default** (`USE_DURABLE_AGENT=1` to enable) — the legacy inline loop stays the
+fallback, so the demo is never at risk.
+
+**New files**
+- `agent/rescueWorkflow.ts` — the `"use workflow"`; a `DurableAgent` (instructions =
+  `CLUTCH_SYSTEM_INSTRUCTION`, model via a `"use step"` so it's serializable) drives the 7 tools.
+- `agent/steps.ts` — the 7 tools as `"use step"` functions: **DB-backed + scoped to `userId`**
+  (IDOR guard) and **dedupe** (decompose replaces sub-steps; blocks dedupe by (task,start);
+  artifacts replace by (task,kind)) → fixes the re-run accumulation issue. Sub-AI calls use
+  `generateObject`/`generateText` (schema-validated — replaces the old `safeJson` hand-parsing).
+- `lib/ai.ts` — `@ai-sdk/google` provider reusing the existing **server-side `GEMINI_API_KEY`**
+  (no env rename, no AI Gateway).
+- `lib/rail.ts` — streams the **same NDJSON the client already reads** to a `"rail"` namespace, so
+  `components/AgentActivityRail.tsx` is untouched.
+- `lib/messages.ts` (+ test) — pure `extractFinalText`. `vitest.config.ts`, `lib/riskScore.test.ts`,
+  `lib/messages.test.ts` — first **automated tests** (`npm test`, 8/8 green).
+
+**Changed**
+- `next.config.ts` wrapped with `withWorkflow`. `middleware.ts` matcher now **excludes
+  `.well-known/workflow`** (required — else Clerk intercepts the DevKit's internal `flow` POST and
+  the agent silently fails). `app/api/agent/route.ts` branches on `USE_DURABLE_AGENT`: `start()` the
+  workflow + stream its rail readable; legacy inline path otherwise. Pinned `@ai-sdk/google@^3`
+  (v4 emits an incompatible `LanguageModelV4`; `ai@6`/`@workflow/ai` want v3).
+
+**Verified**
+- `next build` runs the workflow transform → "1 workflow, 17 steps", compiles clean; `tsc` clean;
+  `npm test` 8/8.
+- Runtime (dev, no-auth, flag on): the workflow **starts, streams the rail live** (real NDJSON:
+  `prioritize`, `draft_communication`, …), **executes tools, and persists to the DB** (sub-steps
+  survived) — and the route returns/closes cleanly (~28s) instead of hanging. The model-as-a-closure
+  serialization blocker was found in the dev log and fixed (model is now a `"use step"`).
+
+**Known issues / follow-ups**
+- The terminal `{type:"done"}` summary line wasn't captured in the no-auth smoke (shared test DB was
+  bloated/unscoped). The durability guarantee still holds — every tool output is persisted, so a
+  refresh shows the work regardless. **Confirm in-browser** with normal (scoped) data.
+- Streaming route on Vercel should set `supportsCancellation` (vercel.json) so a disconnected client
+  doesn't bill to maxDuration. Model failover now relies on step retry (RetryableError) rather than
+  the hand-rolled model chain; add AI-Gateway fallback later if desired.
+- Local dev now needs the workflow runtime (`next dev` runs it via `withWorkflow`).
+
+---
+
 ## Fix — auth redirect loop (signed-in client vs. signed-out server) ✅
 
 **Symptom:** with Clerk on, after signing in the app was stuck on `/sign-in`; console showed
