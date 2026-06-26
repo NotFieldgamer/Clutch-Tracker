@@ -67,7 +67,7 @@ export default function AddTaskBar() {
   return (
     <div>
       <form onSubmit={handleSubmit}>
-        <GlassPanel className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-2 sm:py-3">
+        <GlassPanel className="flex flex-col gap-3 rounded-[var(--radius)] focus-within:ring-2 focus-within:ring-[var(--ring)] sm:flex-row sm:items-center sm:gap-2 sm:py-3">
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}

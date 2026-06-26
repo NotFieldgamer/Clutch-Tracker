@@ -24,8 +24,9 @@
   --faint:      #767F96;
 
   /* the agent's own signal — used only for agent actions & the rail */
-  --agent:      #8B5CF6;   /* violet */
+  --agent:      #8B5CF6;   /* violet — brand accent, glows, rail ticks */
   --agent-2:    #A78BFA;
+  --agent-cta:  #7C3AED;   /* one step darker for filled buttons — white label clears AA (~5.7:1 vs ~4.2:1 on --agent) */
   --agent-glow: rgba(139,92,246,0.35);
 
   /* heat scale — encodes deadline risk (meaning, not decoration) */

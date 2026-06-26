@@ -47,7 +47,7 @@ export default function Button({
         "disabled:pointer-events-none disabled:opacity-50 " +
         `${VARIANT[variant]} ${className}`
       }
-      style={isPrimary ? { backgroundColor: "var(--agent)" } : undefined}
+      style={isPrimary ? { backgroundColor: "var(--agent-cta)" } : undefined}
       {...rest}
     >
       {children}

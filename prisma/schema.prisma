@@ -70,6 +70,7 @@ model Artifact {
   kind      String // outline | draft | email | questions | bill
   title     String
   content   String   @db.Text
+  approved  Boolean  @default(false) // user accepted this artifact (persists across refresh)
   createdAt DateTime @default(now())
 
   @@index([taskId])

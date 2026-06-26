@@ -6,6 +6,7 @@ export interface Block {
 }
 export interface Artifact {
   id: string; taskId: string; kind: "outline" | "draft" | "email" | "prep" | "note"; content: string;
+  approved?: boolean; // user accepted it; persisted so the badge survives a refresh
 }
 export interface Task {
   id: string;
