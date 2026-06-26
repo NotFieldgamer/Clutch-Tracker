@@ -44,6 +44,7 @@ async function loadTasks(userId: string | null): Promise<Task[]> {
         taskId: a.taskId,
         kind: a.kind as Task["artifacts"][number]["kind"],
         content: a.content,
+        approved: a.approved,
       })),
     }));
   } catch (err) {

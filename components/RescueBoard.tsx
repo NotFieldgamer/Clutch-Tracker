@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wand2, Loader2 } from "lucide-react";
+import { Wand2, Loader2, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import CountUp from "@/components/ui/CountUp";
 import GlassPanel from "@/components/ui/GlassPanel";
@@ -24,6 +24,10 @@ const AT_RISK_THRESHOLD = 0.5;
 const RESCUED_RISK = 0.1;
 const isRescued = (t: Task) =>
   t.subSteps.length > 0 || t.blocks.length > 0 || t.artifacts.length > 0;
+
+/** Ids of artifacts the user has approved — seeds the UI from persisted state. */
+const approvedIds = (tasks: Task[]) =>
+  new Set(tasks.flatMap((t) => t.artifacts.filter((a) => a.approved).map((a) => a.id)));
 
 /**
  * Minutes the agent put back on the user's plan: real scheduled-block time where
@@ -64,12 +68,20 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
   const [calError, setCalError] = useState<string | null>(null);
 
   // Approved artifact ids (UI accept/undo) and the proactive scan state.
-  const [approvedArtifacts, setApprovedArtifacts] = useState<Set<string>>(new Set());
+  // Seeded from the persisted `approved` flag so the badge survives a refresh.
+  const [approvedArtifacts, setApprovedArtifacts] = useState<Set<string>>(() =>
+    approvedIds(initialTasks),
+  );
   const [scanState, setScanState] = useState<"scanning" | "ready" | "dismissed">("scanning");
 
-  // Re-sync when the server re-renders (e.g. after AddTaskBar adds tasks).
+  // "Clear week" two-step confirm (guards a demo against an accidental wipe).
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  // Re-sync when the server re-renders (e.g. after AddTaskBar adds tasks) —
+  // including the persisted approval state.
   useEffect(() => {
     setTasks(initialTasks);
+    setApprovedArtifacts(approvedIds(initialTasks));
   }, [initialTasks]);
 
   const hasTasks = tasks.length > 0;
@@ -105,13 +117,62 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
   const showScan =
     hasTasks && atRisk > 0 && scanState !== "dismissed" && feed.length === 0 && !running;
 
-  function toggleApprove(artifactId: string) {
-    setApprovedArtifacts((s) => {
-      const next = new Set(s);
-      if (next.has(artifactId)) next.delete(artifactId);
-      else next.add(artifactId);
-      return next;
-    });
+  // Optimistically flip the badge, then persist; roll back if the save fails so
+  // the UI never claims an approval the DB didn't keep.
+  async function toggleApprove(artifactId: string) {
+    const willApprove = !approvedArtifacts.has(artifactId);
+    const flip = (on: boolean) =>
+      setApprovedArtifacts((s) => {
+        const next = new Set(s);
+        if (on) next.add(artifactId);
+        else next.delete(artifactId);
+        return next;
+      });
+    flip(willApprove);
+    try {
+      const res = await fetch(`/api/artifact/${artifactId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved: willApprove }),
+      });
+      if (!res.ok) throw new Error("patch failed");
+    } catch {
+      flip(!willApprove); // roll back
+      setError("Couldn't save that change. Try again.");
+    }
+  }
+
+  // Optimistically drop a task from the board, then delete it server-side; on
+  // failure put it back and say so (cascade removes its sub-steps/blocks/etc).
+  async function deleteTask(id: string) {
+    if (running) return;
+    const prev = tasks;
+    setTasks((ts) => ts.filter((t) => t.id !== id));
+    try {
+      const res = await fetch(`/api/task/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+    } catch {
+      setTasks(prev);
+      setError("Couldn't remove that task. Try again.");
+    }
+  }
+
+  // Clear the whole week at once — same optimistic pattern over every task id.
+  async function clearWeek() {
+    if (running) return;
+    const prev = tasks;
+    const ids = prev.map((t) => t.id);
+    setConfirmClear(false);
+    setTasks([]);
+    try {
+      const results = await Promise.all(
+        ids.map((id) => fetch(`/api/task/${id}`, { method: "DELETE" })),
+      );
+      if (results.some((r) => !r.ok)) throw new Error("partial clear");
+    } catch {
+      setTasks(prev);
+      setError("Couldn't clear your week — some tasks may remain. Try again.");
+    }
   }
 
   async function connectCalendar() {
@@ -150,7 +211,14 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal: RESCUE_GOAL, tasks, calendarToken: calToken }),
+        body: JSON.stringify({
+          goal: RESCUE_GOAL,
+          tasks,
+          calendarToken: calToken,
+          // The agent schedules work-blocks in the user's working hours, so it
+          // needs their wall-clock zone (the server is UTC on Vercel).
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
       });
 
       if (!res.ok || !res.body) {
@@ -162,31 +230,45 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+
+      const processLine = (raw: string) => {
+        const line = raw.trim();
+        if (!line) return;
+        let msg: { type: string; entry?: ActionLogEntry; tasks?: Task[]; finalText?: string; error?: string };
+        try {
+          msg = JSON.parse(line);
+        } catch {
+          return;
+        }
+        if (msg.type === "log" && msg.entry) {
+          setFeed((f) => [...f, msg.entry as ActionLogEntry]);
+        } else if (msg.type === "done") {
+          if (msg.tasks) setTasks(msg.tasks);
+          setSummary(msg.finalText ?? "");
+        } else if (msg.type === "error") {
+          setError(msg.error ?? "The rescue failed. Try again.");
+        }
+      };
+
+      const drain = () => {
+        let nl: number;
+        while ((nl = buffer.indexOf("\n")) >= 0) {
+          processLine(buffer.slice(0, nl));
+          buffer = buffer.slice(nl + 1);
+        }
+      };
+
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        let nl: number;
-        while ((nl = buffer.indexOf("\n")) >= 0) {
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-          if (!line) continue;
-          let msg: { type: string; entry?: ActionLogEntry; tasks?: Task[]; finalText?: string; error?: string };
-          try {
-            msg = JSON.parse(line);
-          } catch {
-            continue;
-          }
-          if (msg.type === "log" && msg.entry) {
-            setFeed((f) => [...f, msg.entry as ActionLogEntry]);
-          } else if (msg.type === "done") {
-            if (msg.tasks) setTasks(msg.tasks);
-            setSummary(msg.finalText ?? "");
-          } else if (msg.type === "error") {
-            setError(msg.error ?? "The rescue failed. Try again.");
-          }
-        }
+        drain();
       }
+      // Flush a trailing multi-byte char + any final line that arrived in the EOF
+      // chunk without a trailing newline, so a `done` frame is never dropped.
+      buffer += decoder.decode();
+      drain();
+      if (buffer.trim()) processLine(buffer);
     } catch {
       setError("Lost the connection mid-rescue. Try again.");
     } finally {
@@ -347,11 +429,48 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
 
           <section aria-label="Your week, ranked by what's closest to slipping">
             {hasTasks ? (
-              <TaskList
-                cards={scored}
-                approvedArtifacts={approvedArtifacts}
-                onToggleApprove={toggleApprove}
-              />
+              <>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <p className="t-caption">Ranked by risk</p>
+                  {confirmClear ? (
+                    <div className="flex items-center gap-2">
+                      <span className="t-label text-muted">
+                        Clear all {tasks.length}?
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmClear(false)}
+                        className="t-label rounded-[var(--radius-sm)] px-2.5 py-1 text-muted outline-none hover:text-text focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearWeek}
+                        className="t-label inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1 outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                        style={{ color: "var(--hot)" }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Clear week
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmClear(true)}
+                      disabled={running}
+                      className="t-label inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1 text-faint outline-none transition-colors hover:text-hot focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Clear week
+                    </button>
+                  )}
+                </div>
+                <TaskList
+                  cards={scored}
+                  approvedArtifacts={approvedArtifacts}
+                  onToggleApprove={toggleApprove}
+                  onDelete={running ? undefined : deleteTask}
+                />
+              </>
             ) : (
               <GlassPanel className="py-14 text-center">
                 <p className="t-h2 text-text">Nothing&rsquo;s at risk yet.</p>

@@ -29,6 +29,7 @@ export interface RescueInput {
   }>;
   userId: string | null;
   calendarToken: string | null;
+  timeZone: string | null;
 }
 
 /**
@@ -41,7 +42,11 @@ export interface RescueInput {
 export async function rescueWorkflow(input: RescueInput) {
   "use workflow";
 
-  const ctx: RescueCtx = { userId: input.userId, calendarToken: input.calendarToken };
+  const ctx: RescueCtx = {
+    userId: input.userId,
+    calendarToken: input.calendarToken,
+    timeZone: input.timeZone,
+  };
 
   const agent = new DurableAgent({
     model: rescueModelStep,

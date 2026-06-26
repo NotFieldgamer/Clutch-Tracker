@@ -9,6 +9,7 @@ import {
   FileText,
   Mail,
   Check,
+  Trash2,
 } from "lucide-react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import RiskMeter from "@/components/ui/RiskMeter";
@@ -64,6 +65,7 @@ export default function TaskCard({
   rescued,
   approvedArtifacts,
   onToggleApprove,
+  onDelete,
 }: {
   task: Task;
   risk: number;
@@ -71,8 +73,10 @@ export default function TaskCard({
   rescued: boolean;
   approvedArtifacts: Set<string>;
   onToggleApprove: (artifactId: string) => void;
+  onDelete?: (taskId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const reduce = useReducedMotion();
 
   // Countdown is time-dependent → compute on the client to avoid hydration
@@ -240,6 +244,39 @@ export default function TaskCard({
                         <FileText className="h-3.5 w-3.5" /> Artifacts
                       </span>
                     </div>
+                  </div>
+                )}
+
+                {onDelete && (
+                  <div className="mt-5 flex items-center justify-end border-t border-line pt-4">
+                    {confirmDelete ? (
+                      <div className="flex items-center gap-2">
+                        <span className="t-label text-muted">Remove this task?</span>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDelete(false)}
+                          className="t-label rounded-[var(--radius-sm)] px-2.5 py-1 text-muted outline-none hover:text-text focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(task.id)}
+                          className="t-label inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1 outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                          style={{ color: "var(--hot)" }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(true)}
+                        className="t-label inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1 text-faint outline-none transition-colors hover:text-hot focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Remove task
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

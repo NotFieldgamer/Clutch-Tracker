@@ -88,7 +88,7 @@ function normalizeTask(t: Partial<Task> & { id: string }): Task {
 }
 
 export async function POST(req: Request) {
-  let body: { goal?: string; tasks?: unknown; calendarToken?: string | null };
+  let body: { goal?: string; tasks?: unknown; calendarToken?: string | null; timeZone?: string | null };
   try {
     body = await req.json();
   } catch {
@@ -113,6 +113,9 @@ export async function POST(req: Request) {
   const tasks = incoming.map(normalizeTask);
   const goal = body.goal?.trim() || DEFAULT_GOAL;
   const calendarToken = body.calendarToken ?? null; // calendar arrives in Step 4
+  // User's IANA timezone (client-supplied) so work-blocks land in THEIR working
+  // hours, not the server's (UTC on Vercel). Falls back to null → server zone.
+  const timeZone = typeof body.timeZone === "string" && body.timeZone ? body.timeZone : null;
 
   // Scope persistence to the signed-in user (no-auth path → write everything).
   const userId = await getUserId();
@@ -134,7 +137,7 @@ export async function POST(req: Request) {
       deadlineISO: t.deadlineISO,
       importance: t.importance,
     }));
-    const run = await start(rescueWorkflow, [{ goal, tasks: slim, userId, calendarToken }]);
+    const run = await start(rescueWorkflow, [{ goal, tasks: slim, userId, calendarToken, timeZone }]);
     const rail = run
       .getReadable<string>({ namespace: "rail" })
       .pipeThrough(new TextEncoderStream());
@@ -171,6 +174,7 @@ export async function POST(req: Request) {
           goal,
           model: AGENT_MODEL,
           getAccessToken: () => calendarToken,
+          timeZone,
           onLog: (entry: ActionLogEntry) => {
             collected.push(entry);
             send({ type: "log", entry });

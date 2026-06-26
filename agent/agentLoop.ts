@@ -10,6 +10,7 @@ export async function runRescue(opts: {
   tasks: Task[];
   goal: string;
   getAccessToken: () => string | null;
+  timeZone?: string | null; // user's IANA zone for working-hours gating
   onLog?: (e: ActionLogEntry) => void; // for the live Activity Feed
   model?: string;
   maxTurns?: number;
@@ -20,7 +21,7 @@ export async function runRescue(opts: {
     const entry: ActionLogEntry = { ...e, id: Math.random().toString(36).slice(2, 9), at: new Date().toISOString() };
     actionLog.push(entry); opts.onLog?.(entry);
   };
-  const ctx: ToolCtx = { ai: opts.ai, model, tasks: opts.tasks, getAccessToken: opts.getAccessToken, log };
+  const ctx: ToolCtx = { ai: opts.ai, model, tasks: opts.tasks, getAccessToken: opts.getAccessToken, timeZone: opts.timeZone ?? null, log };
 
   // Seed the model with the current task list so it can reason about ids and deadlines.
   const taskSummary = opts.tasks.map(t =>

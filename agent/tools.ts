@@ -35,6 +35,7 @@ export interface ToolCtx {
   model: string;
   tasks: Task[];
   getAccessToken: () => string | null;
+  timeZone: string | null; // user's IANA zone for working-hours gating
   log: (e: Omit<ActionLogEntry, "id" | "at">) => void;
 }
 
@@ -74,15 +75,21 @@ Return ONLY JSON: {"steps":[{"title":"...","effortMin":number}]}` });
       }
       case "find_free_slots": {
         const token = ctx.getAccessToken(); if (!token) throw new Error("calendar not connected");
-        const slots = await findFreeSlots(token, args.durationMin, args.byISO);
+        const slots = await findFreeSlots(token, args.durationMin, args.byISO, {
+          timeZone: ctx.timeZone ?? undefined,
+        });
         ctx.log({ tool: name, summary: `Found ${slots.length} free ${args.durationMin}-min slots`, ok: true });
         return { slots };
       }
       case "schedule_block": {
         const token = ctx.getAccessToken(); if (!token) throw new Error("calendar not connected");
-        const task = find(ctx.tasks, args.taskId);
-        const ev = await createCalendarEvent(token, args.title, args.startISO, args.endISO);
-        task?.blocks.push({ id: uid(), taskId: task.id, startISO: args.startISO, endISO: args.endISO, title: args.title, calendarEventId: ev.id });
+        // Guard BEFORE creating a real event so a bad taskId can't leave an orphan
+        // calendar event the app never records.
+        const task = find(ctx.tasks, args.taskId); if (!task) throw new Error("task not found");
+        const ev = await createCalendarEvent(token, args.title, args.startISO, args.endISO, ctx.timeZone ?? undefined);
+        // Dedupe by start so repeated rescues don't stack duplicate work-blocks.
+        task.blocks = task.blocks.filter((b) => b.startISO !== args.startISO);
+        task.blocks.push({ id: uid(), taskId: task.id, startISO: args.startISO, endISO: args.endISO, title: args.title, calendarEventId: ev.id });
         ctx.log({ tool: name, summary: `Scheduled "${args.title}" ${fmt(args.startISO)}`, ok: true });
         return { eventId: ev.id, htmlLink: ev.htmlLink };
       }
@@ -90,6 +97,8 @@ Return ONLY JSON: {"steps":[{"title":"...","effortMin":number}]}` });
         const task = find(ctx.tasks, args.taskId); if (!task) throw new Error("task not found");
         const res = await ctx.ai.models.generateContent({ model: ctx.model, contents: artifactPrompt(args.kind, task.title) });
         const art: Artifact = { id: uid(), taskId: task.id, kind: args.kind, content: res.text ?? "" };
+        // Dedupe by kind — re-running a rescue replaces this artifact, never stacks it.
+        task.artifacts = task.artifacts.filter((a) => a.kind !== args.kind);
         task.artifacts.push(art);
         ctx.log({ tool: name, summary: `Generated ${args.kind} for "${task.title}"`, ok: true });
         return { artifact: { kind: art.kind, content: art.content } };
@@ -101,13 +110,19 @@ Return ONLY JSON: {"steps":[{"title":"...","effortMin":number}]}` });
 ${args.context ? "Context: " + args.context : ""}
 Return ONLY JSON: {"subject":"...","body":"..."}` });
         const p = safeJson(res.text) ?? { subject: "Quick note", body: res.text ?? "" };
-        task?.artifacts.push({ id: uid(), taskId: task.id, kind: "email", content: `Subject: ${p.subject}\n\n${p.body}` });
+        if (task) {
+          task.artifacts = task.artifacts.filter((a) => a.kind !== "email");
+          task.artifacts.push({ id: uid(), taskId: task.id, kind: "email", content: `Subject: ${p.subject}\n\n${p.body}` });
+        }
         ctx.log({ tool: name, summary: `Drafted ${args.kind} email for "${task?.title ?? ""}"`, ok: true });
         return p;
       }
       case "set_smart_nudge": {
         const task = find(ctx.tasks, args.taskId);
-        task?.artifacts.push({ id: uid(), taskId: task.id, kind: "note", content: `Nudge @ ${args.whenISO}: ${args.message}` });
+        if (task) {
+          task.artifacts = task.artifacts.filter((a) => a.kind !== "note");
+          task.artifacts.push({ id: uid(), taskId: task.id, kind: "note", content: `Nudge @ ${args.whenISO}: ${args.message}` });
+        }
         ctx.log({ tool: name, summary: `Set nudge for "${task?.title ?? ""}" at ${fmt(args.whenISO)}`, ok: true });
         return { ok: true };
       }

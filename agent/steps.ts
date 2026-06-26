@@ -19,6 +19,7 @@ import type { Task } from "@/lib/types";
 export interface RescueCtx {
   userId: string | null;
   calendarToken: string | null;
+  timeZone: string | null; // user's IANA zone for working-hours gating
 }
 
 const ARTIFACT_TITLE: Record<string, string> = {
@@ -126,7 +127,9 @@ export async function findSlotsStep(args: { durationMin: number; byISO: string }
     await railLog({ tool: "find_free_slots", summary: "find_free_slots: calendar not connected", ok: false });
     return { error: "calendar not connected", slots: [] };
   }
-  const slots = await findFreeSlots(ctx.calendarToken, args.durationMin, args.byISO);
+  const slots = await findFreeSlots(ctx.calendarToken, args.durationMin, args.byISO, {
+    timeZone: ctx.timeZone ?? undefined,
+  });
   await railLog({
     tool: "find_free_slots",
     summary: `Found ${slots.length} free ${args.durationMin}-min slots`,
@@ -149,7 +152,13 @@ export async function scheduleBlockStep(
     await railLog({ tool: "schedule_block", summary: "schedule_block: task not found", ok: false });
     return { error: "task not found" };
   }
-  const ev = await createCalendarEvent(ctx.calendarToken, args.title, args.startISO, args.endISO);
+  const ev = await createCalendarEvent(
+    ctx.calendarToken,
+    args.title,
+    args.startISO,
+    args.endISO,
+    ctx.timeZone ?? undefined,
+  );
   const start = new Date(args.startISO);
   // Dedupe by (taskId, start) so repeated rescues don't stack work-blocks.
   const existing = await prisma.block.findFirst({ where: { taskId: task.id, start } });
@@ -292,7 +301,7 @@ export async function finalizeStep(userId: string | null, finalText: string) {
       title: b.title,
       calendarEventId: b.calendarEventId ?? undefined,
     })),
-    artifacts: r.artifacts.map((a) => ({ id: a.id, taskId: a.taskId, kind: a.kind, content: a.content })),
+    artifacts: r.artifacts.map((a) => ({ id: a.id, taskId: a.taskId, kind: a.kind, content: a.content, approved: a.approved })),
   }));
   await railDone(tasks, finalText);
   await railClose();
