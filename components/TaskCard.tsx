@@ -65,6 +65,7 @@ export default function TaskCard({
   rescued,
   approvedArtifacts,
   onToggleApprove,
+  onToggleStep,
   onDelete,
 }: {
   task: Task;
@@ -73,6 +74,7 @@ export default function TaskCard({
   rescued: boolean;
   approvedArtifacts: Set<string>;
   onToggleApprove: (artifactId: string) => void;
+  onToggleStep?: (taskId: string, stepId: string, done: boolean) => void;
   onDelete?: (taskId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -162,17 +164,37 @@ export default function TaskCard({
                         <p className="t-caption mb-2 inline-flex items-center gap-1.5">
                           <ListChecks className="h-3.5 w-3.5" /> Sub-steps
                         </p>
-                        <ul className="space-y-1.5">
+                        <ul className="space-y-1">
                           {task.subSteps.map((s) => (
-                            <li key={s.id} className="flex items-center gap-2.5">
-                              <span
-                                className="grid h-4 w-4 shrink-0 place-items-center rounded-[5px] border border-line"
-                                aria-hidden
+                            <li key={s.id}>
+                              {/* Whole row is the checkbox — a ≥44px hit target
+                                  (DESIGN.md §8) that toggles + persists `done`. */}
+                              <button
+                                type="button"
+                                role="checkbox"
+                                aria-checked={s.done}
+                                aria-label={`${s.done ? "Mark not done" : "Mark done"}: ${s.title}`}
+                                onClick={() => onToggleStep?.(task.id, s.id, !s.done)}
+                                disabled={!onToggleStep}
+                                className="flex min-h-[44px] w-full items-center gap-2.5 rounded-[8px] px-1.5 py-2 text-left outline-none transition-colors hover:bg-white/[0.03] focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:hover:bg-transparent"
                               >
-                                {s.done && <Check className="h-3 w-3" style={{ color: "var(--calm)" }} />}
-                              </span>
-                              <span className="t-body flex-1 text-text">{s.title}</span>
-                              <span className="t-mono text-faint">~{s.effortMin}m</span>
+                                <span
+                                  className="grid h-5 w-5 shrink-0 place-items-center rounded-[6px] border transition-colors"
+                                  style={{
+                                    borderColor: s.done ? "var(--calm)" : "var(--border-str)",
+                                    background: s.done
+                                      ? "color-mix(in srgb, var(--calm) 14%, transparent)"
+                                      : "transparent",
+                                  }}
+                                  aria-hidden
+                                >
+                                  {s.done && <Check className="h-3.5 w-3.5" style={{ color: "var(--calm)" }} />}
+                                </span>
+                                <span className={`t-body flex-1 ${s.done ? "text-faint line-through" : "text-text"}`}>
+                                  {s.title}
+                                </span>
+                                <span className="t-mono text-faint">~{s.effortMin}m</span>
+                              </button>
                             </li>
                           ))}
                         </ul>

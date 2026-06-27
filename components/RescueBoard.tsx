@@ -144,6 +144,31 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
     }
   }
 
+  // Toggle a sub-step's done state — optimistic, then persist; roll back on
+  // failure so the check never claims a state the DB didn't keep.
+  async function toggleStep(taskId: string, stepId: string, done: boolean) {
+    const apply = (value: boolean) =>
+      setTasks((ts) =>
+        ts.map((t) =>
+          t.id !== taskId
+            ? t
+            : { ...t, subSteps: t.subSteps.map((s) => (s.id === stepId ? { ...s, done: value } : s)) },
+        ),
+      );
+    apply(done);
+    try {
+      const res = await fetch(`/api/substep/${stepId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ done }),
+      });
+      if (!res.ok) throw new Error("patch failed");
+    } catch {
+      apply(!done); // roll back
+      setError("Couldn't save that change. Try again.");
+    }
+  }
+
   // Optimistically drop a task from the board, then delete it server-side; on
   // failure put it back and say so (cascade removes its sub-steps/blocks/etc).
   async function deleteTask(id: string) {
@@ -209,6 +234,8 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
     setFeed([]);
     setSummary("");
     setError(null);
+    // Tracks whether the terminal "done" frame arrived (read in `finally`).
+    let gotDone = false;
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
@@ -249,6 +276,7 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
           // the card fills + de-escalates as the agent works, not only at the end.
           setTasks(msg.tasks);
         } else if (msg.type === "done") {
+          gotDone = true;
           if (msg.tasks) setTasks(msg.tasks);
           setSummary(msg.finalText ?? "");
         } else if (msg.type === "error") {
@@ -279,9 +307,11 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
       setError("Lost the connection mid-rescue. Try again.");
     } finally {
       setRunning(false);
-      // Re-read persisted state from the server so the work shows even if the
-      // terminal "done" frame was cut (e.g. the function hit its time limit).
-      router.refresh();
+      // Only re-read from the server if the terminal "done" frame never arrived
+      // (e.g. the function hit its time limit). When we DID get "done", the
+      // streamed tasks are the complete, authoritative state — re-reading then
+      // would needlessly risk overwriting it with a slower/partial DB read.
+      if (!gotDone) router.refresh();
     }
   }
 
@@ -478,6 +508,7 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
                   cards={scored}
                   approvedArtifacts={approvedArtifacts}
                   onToggleApprove={toggleApprove}
+                  onToggleStep={running ? undefined : toggleStep}
                   onDelete={running ? undefined : deleteTask}
                 />
               </>

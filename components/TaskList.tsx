@@ -22,11 +22,13 @@ export default function TaskList({
   cards,
   approvedArtifacts,
   onToggleApprove,
+  onToggleStep,
   onDelete,
 }: {
   cards: ScoredCard[];
   approvedArtifacts: Set<string>;
   onToggleApprove: (artifactId: string) => void;
+  onToggleStep?: (taskId: string, stepId: string, done: boolean) => void;
   onDelete?: (taskId: string) => void;
 }) {
   const { stagger, fadeUp, prefersReduced } = useReduced();
@@ -48,6 +50,7 @@ export default function TaskList({
               rescued={c.rescued}
               approvedArtifacts={approvedArtifacts}
               onToggleApprove={onToggleApprove}
+              onToggleStep={onToggleStep}
               onDelete={onDelete}
             />
           </motion.li>

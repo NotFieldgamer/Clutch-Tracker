@@ -31,48 +31,74 @@ export async function persistRescue(
   for (const t of tasks) {
     if (!isRescued(t)) continue;
     if (ownedIds && !ownedIds.has(t.id)) continue;
-    try {
-      await prisma.$transaction([
-        prisma.subStep.deleteMany({ where: { taskId: t.id } }),
-        prisma.block.deleteMany({ where: { taskId: t.id } }),
-        prisma.artifact.deleteMany({ where: { taskId: t.id } }),
-        prisma.subStep.createMany({
-          data: t.subSteps.map((s, i) => ({
-            id: s.id,
-            taskId: t.id,
-            title: s.title,
-            effortMin: Math.max(0, Math.round(Number(s.effortMin) || 0)),
-            done: Boolean(s.done),
-            order: i,
-          })),
-        }),
-        prisma.block.createMany({
-          data: t.blocks.map((b) => ({
-            id: b.id,
-            taskId: t.id,
-            title: b.title,
-            start: new Date(b.startISO),
-            end: new Date(b.endISO),
-            calendarEventId: b.calendarEventId ?? null,
-            status: b.calendarEventId ? "scheduled" : "planned",
-          })),
-        }),
-        prisma.artifact.createMany({
-          data: t.artifacts.map((a) => ({
-            id: a.id,
-            taskId: t.id,
-            kind: a.kind,
-            title: ARTIFACT_TITLE[a.kind] ?? "Artifact",
-            content: a.content,
-            // Carry the approval through the rescue round-trip — this replace is a
-            // delete+recreate, so without it an approved artifact the user didn't
-            // touch would revert to the schema default (false) on a re-rescue.
-            approved: Boolean(a.approved),
-          })),
-        }),
-      ]);
-    } catch (err) {
-      console.error(`[persist] task ${t.id} failed:`, err);
+
+    // Persist each kind in its OWN transaction (replace-in-place), so a failure
+    // on one table can't roll back the others. A rescue must never lose its
+    // sub-steps because the artifact write hiccupped (e.g. a transient error or
+    // a stale dev client). Only a kind the rescue actually produced is replaced;
+    // an empty kind is left untouched rather than wiped.
+    if (t.subSteps.length > 0) {
+      try {
+        await prisma.$transaction([
+          prisma.subStep.deleteMany({ where: { taskId: t.id } }),
+          prisma.subStep.createMany({
+            data: t.subSteps.map((s, i) => ({
+              id: s.id,
+              taskId: t.id,
+              title: s.title,
+              effortMin: Math.max(0, Math.round(Number(s.effortMin) || 0)),
+              done: Boolean(s.done),
+              order: i,
+            })),
+          }),
+        ]);
+      } catch (err) {
+        console.error(`[persist] sub-steps for task ${t.id} failed:`, err);
+      }
+    }
+
+    if (t.blocks.length > 0) {
+      try {
+        await prisma.$transaction([
+          prisma.block.deleteMany({ where: { taskId: t.id } }),
+          prisma.block.createMany({
+            data: t.blocks.map((b) => ({
+              id: b.id,
+              taskId: t.id,
+              title: b.title,
+              start: new Date(b.startISO),
+              end: new Date(b.endISO),
+              calendarEventId: b.calendarEventId ?? null,
+              status: b.calendarEventId ? "scheduled" : "planned",
+            })),
+          }),
+        ]);
+      } catch (err) {
+        console.error(`[persist] blocks for task ${t.id} failed:`, err);
+      }
+    }
+
+    if (t.artifacts.length > 0) {
+      try {
+        await prisma.$transaction([
+          prisma.artifact.deleteMany({ where: { taskId: t.id } }),
+          prisma.artifact.createMany({
+            data: t.artifacts.map((a) => ({
+              id: a.id,
+              taskId: t.id,
+              kind: a.kind,
+              title: ARTIFACT_TITLE[a.kind] ?? "Artifact",
+              content: a.content,
+              // Carry the approval through the rescue round-trip — this replace is
+              // a delete+recreate, so without it an approved artifact the user
+              // didn't touch would revert to the default (false) on a re-rescue.
+              approved: Boolean(a.approved),
+            })),
+          }),
+        ]);
+      } catch (err) {
+        console.error(`[persist] artifacts for task ${t.id} failed:`, err);
+      }
     }
   }
 

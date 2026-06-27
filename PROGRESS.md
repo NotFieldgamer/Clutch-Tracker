@@ -350,6 +350,19 @@ A second multi-agent audit of the patched code confirmed all 12 fixes above as *
   lands (`runRescue` gained an `onTask` callback; the route emits it; `RescueBoard` merges it) so the
   card fills + de-escalates **live**, plus a `router.refresh()` when the stream ends so a missed `done`
   frame still shows the persisted work.
+- **Rescue work reset to empty after finishing (sub-steps never persisted):** diagnosed against the live
+  DB — 0 `SubStep` rows ever, though `ActionLog` rows saved. Root cause: `persistRescue` wrote a task's
+  sub-steps/blocks/artifacts in **one atomic `$transaction`**, and the artifact write threw on a **stale
+  dev Prisma client** (cached on `globalThis` from before the `approved` migration; Next.js hot-reload
+  never recreates it), rolling the sub-steps back too. Then `router.refresh()` read 0 steps and reset
+  the cards. Fixes: (1) `persistRescue` now persists each kind in its **own** transaction (skipping empty
+  kinds) so one table's failure can't sink the others — verified live: sub-steps persist independently;
+  (2) `router.refresh()` only runs when the `done` frame was missed, so a complete rescue never gets
+  overwritten by a slower/partial DB read. **Restart `npm run dev` once** to drop the stale client so
+  artifacts persist too (production is unaffected — each deploy generates a fresh client).
+- **Sub-steps are now checkable:** the decorative checkbox is a real `role="checkbox"` button (≥44px
+  hit target) that toggles + persists `done` via a new scoped `PATCH /api/substep/[id]` (verified: owner
+  toggles, another user → 404). Optimistic in `RescueBoard` with rollback; the check survives a refresh.
 
 **Re-verified:** `tsc` clean · `npm test` 8/8 · `npm run lint` 0 · `next build` succeeds · live model
 returns valid structured steps.
