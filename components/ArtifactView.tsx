@@ -19,8 +19,10 @@ function parseEmail(content: string): { subject: string; body: string } {
   return { subject: "", body: content };
 }
 
+// min-h-[44px] keeps the hit area on the >=44px touch floor (DESIGN.md §8) even
+// though the label is small — these are the primary per-artifact controls.
 const actionBtn =
-  "inline-flex items-center gap-1 rounded-[6px] px-2 py-1 t-label outline-none " +
+  "inline-flex min-h-[44px] items-center gap-1 rounded-[6px] px-3 py-1 t-label outline-none " +
   "transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-[var(--ring)]";
 
 /**

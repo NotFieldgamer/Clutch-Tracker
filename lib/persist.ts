@@ -64,6 +64,10 @@ export async function persistRescue(
             kind: a.kind,
             title: ARTIFACT_TITLE[a.kind] ?? "Artifact",
             content: a.content,
+            // Carry the approval through the rescue round-trip — this replace is a
+            // delete+recreate, so without it an approved artifact the user didn't
+            // touch would revert to the schema default (false) on a re-rescue.
+            approved: Boolean(a.approved),
           })),
         }),
       ]);
