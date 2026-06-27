@@ -12,6 +12,7 @@ export async function runRescue(opts: {
   getAccessToken: () => string | null;
   timeZone?: string | null; // user's IANA zone for working-hours gating
   onLog?: (e: ActionLogEntry) => void; // for the live Activity Feed
+  onTask?: (tasks: Task[]) => void; // stream live card updates as each tool lands
   model?: string;
   maxTurns?: number;
 }): Promise<RescueResult> {
@@ -51,6 +52,9 @@ export async function runRescue(opts: {
     for (const call of calls) {
       // SDK: FunctionCall.name is optional (string | undefined) — guard for strict TS.
       const result = await executeTool(call.name ?? "", call.args ?? {}, ctx);
+      // Push the updated tasks to the client the instant a tool mutates them, so
+      // the card fills + de-escalates as the agent works — not only at the end.
+      opts.onTask?.(ctx.tasks);
       contents.push({ role: "user", parts: [{ functionResponse: { name: call.name, response: { result } } }] });
     }
   }

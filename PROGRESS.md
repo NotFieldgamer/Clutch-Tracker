@@ -342,6 +342,14 @@ A second multi-agent audit of the patched code confirmed all 12 fixes above as *
   `decompose_task` and `draft_communication`, a more robust `safeJson` (extracts the JSON block from
   prose), and an honest `ok:false` log if zero steps ever come back. Verified live: the model returns
   5 parseable steps. (The durable path already used schema-validated `generateObject`.)
+- **Cards didn't fill while the agent worked ("rail shows the work, card says 'not rescued yet'"):**
+  the legacy path streamed `{type:"log"}` per tool (filling the rail) but sent task state only once, in
+  the terminal `{type:"done"}` frame — so cards stayed at their pre-rescue empty state for the whole
+  rescue, and never updated at all if the function was cut before `done`. This broke the core principle
+  ("it does the work and shows me"). Fixed by streaming a `{type:"tasks"}` snapshot after **each** tool
+  lands (`runRescue` gained an `onTask` callback; the route emits it; `RescueBoard` merges it) so the
+  card fills + de-escalates **live**, plus a `router.refresh()` when the stream ends so a missed `done`
+  frame still shows the persisted work.
 
 **Re-verified:** `tsc` clean · `npm test` 8/8 · `npm run lint` 0 · `next build` succeeds · live model
 returns valid structured steps.

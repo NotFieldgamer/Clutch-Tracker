@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Wand2, Loader2, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -56,6 +57,7 @@ const RESCUE_GOAL =
  */
 export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) {
   const { stagger, fadeUp, prefersReduced } = useReduced();
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [feed, setFeed] = useState<ActionLogEntry[]>([]);
   const [running, setRunning] = useState(false);
@@ -242,6 +244,10 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
         }
         if (msg.type === "log" && msg.entry) {
           setFeed((f) => [...f, msg.entry as ActionLogEntry]);
+        } else if (msg.type === "tasks" && msg.tasks) {
+          // Live card updates: each tool that lands streams the updated tasks so
+          // the card fills + de-escalates as the agent works, not only at the end.
+          setTasks(msg.tasks);
         } else if (msg.type === "done") {
           if (msg.tasks) setTasks(msg.tasks);
           setSummary(msg.finalText ?? "");
@@ -273,6 +279,9 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
       setError("Lost the connection mid-rescue. Try again.");
     } finally {
       setRunning(false);
+      // Re-read persisted state from the server so the work shows even if the
+      // terminal "done" frame was cut (e.g. the function hit its time limit).
+      router.refresh();
     }
   }
 

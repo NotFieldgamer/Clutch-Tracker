@@ -179,6 +179,9 @@ export async function POST(req: Request) {
             collected.push(entry);
             send({ type: "log", entry });
           },
+          // Stream the updated tasks as each tool lands so the cards fill +
+          // de-escalate live, instead of only on the terminal "done" frame.
+          onTask: (live: Task[]) => send({ type: "tasks", tasks: live }),
         });
         // Persist before signalling done so an immediate refresh shows the work.
         await persistRescue(result.tasks, result.actionLog ?? collected, ownedIds);
