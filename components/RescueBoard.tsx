@@ -439,15 +439,16 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
                       </span>
                       <button
                         type="button"
+                        autoFocus
                         onClick={() => setConfirmClear(false)}
-                        className="t-label rounded-[var(--radius-sm)] px-2.5 py-1 text-muted outline-none hover:text-text focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                        className="t-label inline-flex min-h-[44px] items-center rounded-[var(--radius-sm)] px-3 py-1 text-muted outline-none hover:text-text focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                       >
                         Cancel
                       </button>
                       <button
                         type="button"
                         onClick={clearWeek}
-                        className="t-label inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1 outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                        className="t-label inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-sm)] px-3 py-1 outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                         style={{ color: "var(--hot)" }}
                       >
                         <Trash2 className="h-3.5 w-3.5" /> Clear week
@@ -458,7 +459,7 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
                       type="button"
                       onClick={() => setConfirmClear(true)}
                       disabled={running}
-                      className="t-label inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1 text-faint outline-none transition-colors hover:text-hot focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:pointer-events-none disabled:opacity-40"
+                      className="t-label inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-sm)] px-3 py-1 text-faint outline-none transition-colors hover:text-hot focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:pointer-events-none disabled:opacity-40"
                     >
                       <Trash2 className="h-3.5 w-3.5" /> Clear week
                     </button>

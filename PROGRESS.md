@@ -276,14 +276,87 @@ handshake route.
 
 ---
 
+## Fix batch — audit blockers + the two missing capabilities ✅ (on `feat/durable-agent-workflow`)
+
+Driven by a multi-agent codebase audit (8 dimensions, adversarial verify per finding). This pass
+closed the deploy/quality blockers and shipped the two data-layer capabilities the audit flagged as
+missing.
+
+**Done**
+- **Timezone (blocker):** `findFreeSlots` now gates the 9–21 working-hours window in the user's IANA
+  zone (`hourInTimeZone` via `Intl.DateTimeFormat`), and calendar events carry that `timeZone`. The
+  zone is threaded client → `/api/agent` → both agent paths (inline + durable). No more UTC drift on
+  Vercel.
+- **Re-run dedupe (blocker):** the legacy inline tools now **replace** instead of `push` — blocks
+  dedupe by start, artifacts/email/note by kind — so repeated rescues no longer stack duplicates
+  (matches the durable path, which already deduped).
+- **schedule_block guard:** verifies the task exists **before** creating a real calendar event, so a
+  bad taskId can't leave an orphan event the app never records.
+- **Client NDJSON drain:** the stream reader now flushes the decoder and processes a final newline-less
+  line on EOF, so a trailing `{type:"done"}` frame is never dropped.
+- **CTA contrast + input focus (a11y blockers):** new `--agent-cta` (#7C3AED, white label ~5.7:1 AA)
+  for the primary button; the task input's GlassPanel gains a visible `focus-within` ring.
+- **Build command (deploy blocker):** `build` is now `prisma generate && next build` (no DB at build
+  time, so a bad `DIRECT_URL` can't brick the deploy). Migrations apply via a dedicated
+  `npm run db:migrate:deploy`.
+- **ESLint wired (quality blocker):** `npm run lint` was a no-op (no config, no packages). Added
+  `eslint` + `eslint-config-next` + flat `eslint.config.mjs` (`next/core-web-vitals` + `next/typescript`),
+  script is now `eslint .`; the verbatim agent core / GIS bindings relax `no-explicit-any` at their
+  untyped SDK boundaries. **Exits 0 clean.**
+- **Delete / clear UI (capability):** `DELETE /api/task/[id]` (scoped via `deleteMany` so it 404s on
+  another user's id; relies on the schema's cascade). Per-card **Remove task** (two-click confirm) and
+  a header **Clear week** (two-click confirm), both optimistic with rollback in `RescueBoard`.
+- **Persist artifact approve/undo (capability):** new `Artifact.approved` column (migration
+  `20260626143521_artifact_approved`, applied to Supabase) + `PATCH /api/artifact/[id]` (scoped through
+  the parent task). `toggleApprove` is optimistic + rolls back on failure; `RescueBoard` seeds the
+  approved set from the persisted flag, so the "Approved" badge survives a refresh.
+
+**Verified:** `tsc --noEmit` clean · `npm test` 8/8 · `npm run lint` 0 errors · `next build` succeeds
+(both new routes in the manifest, 9/9 pages).
+
+### Re-audit follow-ups (defects the second audit caught — fixed same pass)
+
+A second multi-agent audit of the patched code confirmed all 12 fixes above as **resolved** (0 of the
+14 actionable findings refuted), but surfaced gaps — several in the just-shipped work — now closed:
+
+- **RiskMeter color de-escalation (signature motion):** the fill set `backgroundColor` in BOTH
+  `animate` and inline `style`; the inline style won, so on rescue the bar's heat **snapped** to green
+  instead of easing over ~700ms (DESIGN.md §4.2's "visual payoff"). Removed the inline `style` — color
+  now glides with the width (`components/ui/RiskMeter.tsx`).
+- **Migrations on deploy:** moving migrate out of `build` left nothing applying it on Vercel. Added
+  `vercel.json` with a build command that runs `prisma migrate deploy` **guarded** (`|| echo skip`), so
+  migrations apply on each deploy but a transient DB issue degrades instead of bricking the build.
+  README Deploy section corrected.
+- **Approve flag wiped on re-rescue (default path):** `persistRescue` does delete+recreate of a task's
+  artifacts and re-created them without `approved`, reverting approvals on a second rescue. Now carries
+  `approved: Boolean(a.approved)` through (`lib/persist.ts`).
+- **Touch targets + focus:** the new inline Copy/Approve, Remove, and Clear-week controls were below
+  the 44px floor and dropped keyboard focus to `<body>` on the confirm toggle. Added `min-h-[44px]` and
+  `autoFocus` on the (safe-default) Cancel button (`ArtifactView`, `TaskCard`, `RescueBoard`).
+- **Stream cancellation:** `vercel.json` sets `supportsCancellation` on `app/api/agent/route.ts` so an
+  abandoned durable-path rescue tears down instead of billing to `maxDuration`.
+
+**Re-verified:** `tsc` clean · `npm test` 8/8 · `npm run lint` 0 · `next build` succeeds.
+
+**Still open after this pass** (reported, not yet fixed — mostly pre-existing): bill capability (#3
+hero) missing; `ProgressRing` built but unused; durable-path `{type:"done"}` lost past 60s (work still
+persists — refresh shows it); h3-inside-button heading semantics; OAuth token persisted into the
+durable store; zero tests on the agent loop/routes; the two agent paths have diverged (effort clamp,
+step cap, action-log taskId); plus ~25 polish items (input length caps + prompt-injection hardening,
+AbortController on the client fetch, htmlLink click-through, send/open action on emails, shared-helper
+de-duplication). See the audit output for the full list.
+
+---
+
 **Known issues**
 - Gemini flash models are intermittently 503 (high demand); the agent retries + fails over and delivers
   partial results with an honest summary if a rescue is interrupted mid-loop.
-- `findFreeSlots` working-hours window uses server local time (verbatim) — fine on local dev (IST), but
-  on Vercel (UTC) blocks may land outside the user's 9–21 window. Revisit with tz work.
-- Re-running a rescue **replaces** sub-steps but **accumulates** blocks/artifacts (the verbatim tools
-  `push`), so repeated rescues can stack drafts on a task. Fine for the demo; dedupe later if needed.
-- Artifact approvals (the UI accept/undo) still live in client state — not yet persisted.
-- Tasks created before this migration have `userId = null`, so they're invisible once auth is on
+- Tasks created before the auth migration have `userId = null`, so they're invisible once auth is on
   (expected). Load a sample week while signed in to populate a user's view.
-- No delete/clear UI yet. `.env.local` must be filled before any Gemini/Calendar/DB/Auth feature works.
+- Re-running a rescue regenerates artifacts with fresh ids, so a prior **Approved** badge naturally
+  clears on re-rescue (the draft itself is new) — expected, not a bug.
+- `.env.local` must be filled before any Gemini/Calendar/DB/Auth feature works. The Prisma CLI reads
+  `.env` (not `.env.local`); keep the DB URLs in `.env` for `prisma migrate`/`generate`.
+- Durable path still needs `vercel.json` `supportsCancellation` so a disconnected client doesn't bill
+  to `maxDuration`; rate-limiting `/api/parse` + `/api/agent` and not persisting the OAuth token into
+  the workflow store remain open (deferred — infra).

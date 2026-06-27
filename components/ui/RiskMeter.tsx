@@ -44,11 +44,14 @@ export default function RiskMeter({
       <motion.div
         className="h-full rounded-full"
         initial={false}
+        // Both width AND backgroundColor live in `animate` so the warm→cool heat
+        // shift eases with the width on rescue (the §4.2 payoff). An inline
+        // `style={{ backgroundColor }}` would win over the animated value and make
+        // the color snap — so it is deliberately NOT set here.
         animate={{ width: `${v * 100}%`, backgroundColor: color }}
         // The de-escalation ease is the payoff; under reduced motion the meter
         // still changes (color + width) but snaps rather than glides.
         transition={reduce ? { duration: 0 } : rescueEase}
-        style={{ backgroundColor: color }}
       />
     </div>
   );
