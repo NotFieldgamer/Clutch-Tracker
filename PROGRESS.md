@@ -335,8 +335,16 @@ A second multi-agent audit of the patched code confirmed all 12 fixes above as *
   `autoFocus` on the (safe-default) Cancel button (`ArtifactView`, `TaskCard`, `RescueBoard`).
 - **Stream cancellation:** `vercel.json` sets `supportsCancellation` on `app/api/agent/route.ts` so an
   abandoned durable-path rescue tears down instead of billing to `maxDuration`.
+- **`decompose_task` → "0 steps" (default inline path):** the inline tools asked for `"Return ONLY
+  JSON"` as free text and parsed it with a hand-rolled `safeJson`; when the model prose-wrapped the
+  JSON, parsing failed → 0 sub-steps logged as **success**. Fixed by forcing schema-constrained output
+  (`responseMimeType: "application/json"` + `responseSchema` with `Type`, same as `/api/parse`) on
+  `decompose_task` and `draft_communication`, a more robust `safeJson` (extracts the JSON block from
+  prose), and an honest `ok:false` log if zero steps ever come back. Verified live: the model returns
+  5 parseable steps. (The durable path already used schema-validated `generateObject`.)
 
-**Re-verified:** `tsc` clean · `npm test` 8/8 · `npm run lint` 0 · `next build` succeeds.
+**Re-verified:** `tsc` clean · `npm test` 8/8 · `npm run lint` 0 · `next build` succeeds · live model
+returns valid structured steps.
 
 **Still open after this pass** (reported, not yet fixed — mostly pre-existing): bill capability (#3
 hero) missing; `ProgressRing` built but unused; durable-path `{type:"done"}` lost past 60s (work still

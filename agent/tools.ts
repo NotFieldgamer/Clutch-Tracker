@@ -44,7 +44,13 @@ const find = (tasks: Task[], id: string) => tasks.find(t => t.id === id);
 const fmt = (iso: string) => { try { return new Date(iso).toLocaleString(); } catch { return iso; } };
 function safeJson(text?: string): any {
   if (!text) return null;
-  try { return JSON.parse(text.replace(/```json|```/g, "").trim()); } catch { return null; }
+  const t = text.replace(/```json|```/gi, "").trim();
+  try { return JSON.parse(t); } catch { /* fall through to extraction */ }
+  // Fallback: pull the first {...} or [...] block out of any surrounding prose,
+  // so a model that ignores "return ONLY JSON" still parses instead of yielding null.
+  const m = t.match(/[{[][\s\S]*[}\]]/);
+  if (m) { try { return JSON.parse(m[0]); } catch { /* give up */ } }
+  return null;
 }
 function artifactPrompt(kind: string, title: string): string {
   if (kind === "prep") return `Write 5 focused interview-prep questions (with 1-line answer hints) for: "${title}".`;
@@ -63,12 +69,45 @@ export async function executeTool(name: string, args: any, ctx: ToolCtx): Promis
       }
       case "decompose_task": {
         const task = find(ctx.tasks, args.taskId); if (!task) throw new Error("task not found");
-        const res = await ctx.ai.models.generateContent({ model: ctx.model,
+        // Force schema-constrained JSON (same as /api/parse) so the model can't
+        // return prose-wrapped JSON that fails to parse and silently yields 0 steps.
+        const res = await ctx.ai.models.generateContent({
+          model: ctx.model,
           contents: `Break this into 3-6 ordered sub-steps with realistic minute estimates.
-Task "${task.title}" (type ${task.type}, ${task.percentDone}% done, due ${task.deadlineISO}).
-Return ONLY JSON: {"steps":[{"title":"...","effortMin":number}]}` });
-        const steps: SubStep[] = (safeJson(res.text)?.steps ?? []).map((s: any) =>
-          ({ id: uid(), title: s.title, effortMin: s.effortMin ?? 30, done: false }));
+Task "${task.title}" (type ${task.type}, ${task.percentDone}% done, due ${task.deadlineISO}).`,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                steps: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: { title: { type: Type.STRING }, effortMin: { type: Type.NUMBER } },
+                    required: ["title", "effortMin"],
+                  },
+                },
+              },
+              required: ["steps"],
+            },
+          },
+        });
+        const raw = safeJson(res.text);
+        const steps: SubStep[] = (Array.isArray(raw?.steps) ? raw.steps : [])
+          .filter((s: any) => s && typeof s.title === "string" && s.title.trim())
+          .map((s: any) => ({
+            id: uid(),
+            title: String(s.title).trim(),
+            effortMin: Number(s.effortMin) > 0 ? Math.round(Number(s.effortMin)) : 30,
+            done: false,
+          }));
+        if (steps.length === 0) {
+          // Never report "→ 0 steps" as a success — surface it honestly so the
+          // rail is truthful and the agent can re-plan/retry.
+          ctx.log({ tool: name, summary: `Couldn't break down "${task.title}" — no steps returned`, ok: false });
+          return { error: "no steps produced" };
+        }
         task.subSteps = steps;
         ctx.log({ tool: name, summary: `Decomposed "${task.title}" → ${steps.length} steps`, ok: true });
         return { steps };
@@ -105,10 +144,19 @@ Return ONLY JSON: {"steps":[{"title":"...","effortMin":number}]}` });
       }
       case "draft_communication": {
         const task = find(ctx.tasks, args.taskId);
-        const res = await ctx.ai.models.generateContent({ model: ctx.model,
+        const res = await ctx.ai.models.generateContent({
+          model: ctx.model,
           contents: `Write a brief, polite ${args.kind} email about "${task?.title ?? "a task"}".
-${args.context ? "Context: " + args.context : ""}
-Return ONLY JSON: {"subject":"...","body":"..."}` });
+${args.context ? "Context: " + args.context : ""}`,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: { subject: { type: Type.STRING }, body: { type: Type.STRING } },
+              required: ["subject", "body"],
+            },
+          },
+        });
         const p = safeJson(res.text) ?? { subject: "Quick note", body: res.text ?? "" };
         if (task) {
           task.artifacts = task.artifacts.filter((a) => a.kind !== "email");
