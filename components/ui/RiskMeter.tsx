@@ -4,8 +4,10 @@ import { motion, useReducedMotion } from "framer-motion";
 import { rescueEase } from "@/lib/motion";
 
 interface RiskMeterProps {
-  /** 0..1 — higher means closer to slipping. */
+  /** 0..1 — higher means closer to slipping (or, when `color` is set, more done). */
   value: number;
+  /** Override the heat color — e.g. a rescued task's bar reads as work-done, not risk. */
+  color?: string;
   className?: string;
   "aria-label"?: string;
 }
@@ -25,11 +27,12 @@ export function heatFor(risk: number): string {
  */
 export default function RiskMeter({
   value,
+  color: colorOverride,
   className = "",
   "aria-label": ariaLabel,
 }: RiskMeterProps) {
   const v = Math.max(0, Math.min(1, value));
-  const color = heatFor(v);
+  const color = colorOverride ?? heatFor(v);
   const reduce = useReducedMotion();
 
   return (

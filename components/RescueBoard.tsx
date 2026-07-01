@@ -16,6 +16,7 @@ import ProactiveScanBanner from "@/components/ProactiveScanBanner";
 import { getCalendarToken } from "@/lib/google/auth";
 import { useReduced } from "@/lib/motion";
 import { riskScore } from "@/lib/riskScore";
+import { progressFromSteps } from "@/lib/progress";
 import type { Task, ActionLogEntry } from "@/lib/types";
 
 const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID;
@@ -149,11 +150,13 @@ export default function RescueBoard({ initialTasks }: { initialTasks: Task[] }) 
   async function toggleStep(taskId: string, stepId: string, done: boolean) {
     const apply = (value: boolean) =>
       setTasks((ts) =>
-        ts.map((t) =>
-          t.id !== taskId
-            ? t
-            : { ...t, subSteps: t.subSteps.map((s) => (s.id === stepId ? { ...s, done: value } : s)) },
-        ),
+        ts.map((t) => {
+          if (t.id !== taskId) return t;
+          const subSteps = t.subSteps.map((s) => (s.id === stepId ? { ...s, done: value } : s));
+          // Keep percentDone in lock-step with the checks so the ring moves the
+          // instant a box flips (the server recomputes the same value on PATCH).
+          return { ...t, subSteps, percentDone: progressFromSteps(subSteps) };
+        }),
       );
     apply(done);
     try {

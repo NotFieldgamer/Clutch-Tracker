@@ -15,6 +15,7 @@ import GlassPanel from "@/components/ui/GlassPanel";
 import RiskMeter from "@/components/ui/RiskMeter";
 import ArtifactView from "@/components/ArtifactView";
 import { rescueEase } from "@/lib/motion";
+import { progressFromSteps } from "@/lib/progress";
 import type { Task } from "@/lib/types";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -95,6 +96,19 @@ export default function TaskCard({
 
   const overdue = countdown === "OVERDUE";
 
+  // Once a task is rescued, the header bar reads as work-done: it fills (calm
+  // green) as sub-steps get checked, so ticking a box moves it live. Before a
+  // rescue — or a rescue with no sub-steps to measure — it stays the risk meter.
+  const progress = progressFromSteps(task.subSteps);
+  const showProgress = rescued && task.subSteps.length > 0;
+  const allDone = showProgress && progress >= 100;
+  const meterValue = showProgress ? progress / 100 : risk;
+  const meterLabel = showProgress
+    ? allDone
+      ? "Rescued · done"
+      : `Rescued · ${progress}% done`
+    : reason;
+
   return (
     <motion.div
       className="rounded-[var(--radius)]"
@@ -126,8 +140,13 @@ export default function TaskCard({
             </div>
             <h3 className="t-h2 truncate text-text">{task.title}</h3>
             <div className="mt-3 flex items-center gap-3">
-              <RiskMeter value={risk} className="max-w-[160px]" aria-label={`Risk: ${reason}`} />
-              <span className="t-label truncate text-muted">{reason}</span>
+              <RiskMeter
+                value={meterValue}
+                color={showProgress ? "var(--calm)" : undefined}
+                className="max-w-[160px]"
+                aria-label={showProgress ? `${progress}% of the work done` : `Risk: ${reason}`}
+              />
+              <span className="t-label truncate text-muted">{meterLabel}</span>
             </div>
           </div>
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authEnabled, getUserId, taskScope } from "@/lib/auth";
+import { progressFromSteps } from "@/lib/progress";
 
 export const runtime = "nodejs";
 
@@ -34,14 +35,29 @@ export async function PATCH(
   }
 
   try {
-    const { count } = await prisma.subStep.updateMany({
+    // Scope through the parent task (so a user only touches their own steps) and
+    // learn which task this step belongs to, so we can recompute that task's
+    // overall progress once the toggle lands.
+    const sub = await prisma.subStep.findFirst({
       where: { id, task: taskScope(userId) },
-      data: { done: body.done },
+      select: { taskId: true },
     });
-    if (count === 0) {
+    if (!sub) {
       return NextResponse.json({ error: "That sub-step no longer exists." }, { status: 404 });
     }
-    return NextResponse.json({ id, done: body.done });
+
+    await prisma.subStep.update({ where: { id }, data: { done: body.done } });
+
+    // Progress is checked sub-steps ÷ total — recompute + persist so the card's
+    // "% done" survives a refresh and the risk score reflects real completion.
+    const steps = await prisma.subStep.findMany({
+      where: { taskId: sub.taskId },
+      select: { done: true },
+    });
+    const percentDone = progressFromSteps(steps);
+    await prisma.task.update({ where: { id: sub.taskId }, data: { percentDone } });
+
+    return NextResponse.json({ id, done: body.done, percentDone });
   } catch (err) {
     console.error("[substep] patch error:", err);
     return NextResponse.json(
